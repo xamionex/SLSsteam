@@ -1,0 +1,13 @@
+Steamclient Modification for Linux
+
+To compile run:
+make
+
+To use run:
+LD_AUDIT="/full/path/to/SLSsteam.so" steam
+
+To install run:
+./setup.sh install
+
+To uninstall run:
+./setup.sh uninstall
