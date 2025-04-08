@@ -11,3 +11,5 @@ To install run:
 
 To uninstall run:
 ./setup.sh uninstall
+
+Configuration gets created at ~/.config/SLSsteam/config.yaml during first run
