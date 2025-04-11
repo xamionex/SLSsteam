@@ -5,6 +5,13 @@
 
 namespace Utils
 {
+	enum SigFollowMode
+	{
+		None,
+		Relative,
+		PrologueUpwards
+	};
+
 	extern FILE* logFile;
 
 	//AFAIK variadic args do not work in cpp files, probably wrong though
@@ -18,10 +25,11 @@ namespace Utils
 
 	void init();
 
-	lm_address_t searchSignature(const char* name, const char* signature, lm_module_t module, bool resolveRelative);;
+	lm_address_t searchSignature(const char* name, const char* signature, lm_module_t module, SigFollowMode);
 	lm_address_t searchSignature(const char* name, const char* signature, lm_module_t module);
 
 	lm_address_t getJmpTarget(lm_address_t address);
+	lm_address_t findPrologue(lm_address_t address);
 	
 	template<typename tFN, typename ...Args>
 	constexpr auto callVFunc(unsigned int index, void* thisPtr, Args... args)

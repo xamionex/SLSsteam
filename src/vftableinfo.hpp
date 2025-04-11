@@ -5,7 +5,6 @@ namespace VFTIndexes
 	namespace IClientUser
 	{
 		constexpr int GetSteamID = 10;
-		constexpr int BIsSubscribedApp = 181;
 	}
 	namespace IClientApps
 	{
