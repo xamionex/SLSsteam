@@ -363,32 +363,11 @@ void Hooks::setup()
 		return;
 	}
 
-	//Disabled by default because it gets called a lot
 	LM_HookCode(logSteamPipeCall, reinterpret_cast<lm_address_t>(hkLogSteamPipeCall), reinterpret_cast<lm_address_t*>(&LogSteamPipeCall));
-	{
-		//TODO: Write wrapper hooking function that automatically does this. Also disable hardcode of instruction and instead follow chunk fn call
-
-		//Replace the PIC thunk call
-		char instr_str[30];
-		sprintf(instr_str, "mov ebx,%p", reinterpret_cast<void*>(logSteamPipeCall + 9));
-
-		lm_inst_t inst;
-		LM_Assemble(instr_str, &inst);
-
-		LM_WriteMemory(reinterpret_cast<lm_address_t>(LogSteamPipeCall) + 4, inst.bytes, inst.size);
-	}
+	Utils::fixPICThunkCall("LogSteamPipeCall", logSteamPipeCall, reinterpret_cast<lm_address_t>(LogSteamPipeCall));
 
 	LM_HookCode(checkAppOwnership, reinterpret_cast<lm_address_t>(hkCheckAppOwnership), reinterpret_cast<lm_address_t*>(&CheckAppOwnership));
-	{
-		//Replace the PIC thunk call
-		char instr_str[30];
-		sprintf(instr_str, "mov eax,%p", reinterpret_cast<void*>(checkAppOwnership + 5));
-
-		lm_inst_t inst;
-		LM_Assemble(instr_str, &inst);
-
-		LM_WriteMemory(reinterpret_cast<lm_address_t>(CheckAppOwnership), inst.bytes, inst.size);
-	}
+	Utils::fixPICThunkCall("CheckAppOwnership", checkAppOwnership, reinterpret_cast<lm_address_t>(CheckAppOwnership));
 
 	if (g_config.disableFamilyLock)
 	{
@@ -402,16 +381,7 @@ void Hooks::setup()
 	LM_HookCode(clientUser_PipeLoop, reinterpret_cast<lm_address_t>(hkClientUser_PipeLoop), reinterpret_cast<lm_address_t*>(&IClientUser_PipeLoop));
 	LM_HookCode(isSubscribedApp, reinterpret_cast<lm_address_t>(hkClientUser_BIsSubscribedApp), reinterpret_cast<lm_address_t*>(&IClientUser_BIsSubscribedApp));
 	LM_HookCode(getSubscribedApps, reinterpret_cast<lm_address_t>(hkClientUser_GetSubscribedApps), reinterpret_cast<lm_address_t*>(&IClientUser_GetSubscribedApps));
-	{
-		//Replace the PIC thunk call
-		char instr_str[30];
-		sprintf(instr_str, "mov ecx,%p", reinterpret_cast<void*>(getSubscribedApps + 5));
-
-		lm_inst_t inst;
-		LM_Assemble(instr_str, &inst);
-
-		LM_WriteMemory(reinterpret_cast<lm_address_t>(IClientUser_GetSubscribedApps), inst.bytes, inst.size);
-	}
+	Utils::fixPICThunkCall("ISteamUser::GetSubscribedApps", getSubscribedApps, reinterpret_cast<lm_address_t>(IClientUser_GetSubscribedApps));
 }
 
 bool Hooks::checkAddresses(std::vector<lm_address_t> addresses)
