@@ -9,7 +9,7 @@ deps := $(objs:%.o=%.d)
 #Disabled until I manage to fork a frickin MessageBox. Can't be that hard
 GTKFLAGS := $(shell pkg-config --libs --cflags gtk+-3.0)
 
-CXXFLAGS := -O3 -flto=auto -fPIC -m32 -std=c++17 -Wall -Wextra -Wpedantic
+CXXFLAGS := -O3 -flto=auto -fPIC -m32 -std=c++20 -Wall -Wextra -Wpedantic
 LDFLAGS := -shared
 
 ifeq ($(shell echo $$NATIVE),1)
