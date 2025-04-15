@@ -11,7 +11,39 @@
 #include <link.h>
 #include <pthread.h>
 #include <cstdio>
+#include <string>
 #include <unistd.h>
+
+bool removeSLSsteamFromEnvVar(const char* varName)
+{
+	char* var = getenv(varName);
+	if (var == NULL)
+		return false;
+
+	auto splits = Utils::strsplit(var, ":");
+	auto newEnv = std::string();
+
+	for(unsigned int i = 0; i < splits.size(); i++)
+	{
+		auto split = splits.at(i);
+		if (split.ends_with("SLSsteam.so"))
+		{
+			Utils::log("Removed %s from $%s\n", split.c_str(), varName);
+			continue;
+		}
+
+		if(newEnv.size() > 0)
+		{
+			newEnv.append(":");
+		}
+		newEnv.append(split);
+	}
+
+	setenv(varName, newEnv.c_str(), 1);
+	Utils::log("Set %s to %s\n", varName, newEnv.c_str());
+
+	return true;
+}
 
 static pthread_t SLSsteam_mainThread;
 
@@ -29,10 +61,11 @@ void* SLSsteam_init(void*)
 		return nullptr;
 	}
 
-	setenv("LD_AUDIT", "", 1);
-
 	Utils::init();
 	Utils::log("Running in %s\nInitializing...\n", proc.name);
+
+	removeSLSsteamFromEnvVar("LD_AUDIT");
+	removeSLSsteamFromEnvVar("LD_PRELOAD");
 
 	g_config.init();
 
