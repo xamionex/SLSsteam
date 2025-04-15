@@ -11,6 +11,9 @@
 
 ## Downloading and Compiling
 
+Make sure you have OpenSSL installed!
+Then run:
+
 ```bash
 git clone "https://github.com/AceSLS/SLSsteam"
 cd SLSsteam

@@ -8,11 +8,17 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <link.h>
 #include <pthread.h>
 #include <cstdio>
+#include <sstream>
 #include <string>
 #include <unistd.h>
+
+#include <openssl/sha.h>
+
+const char* SAFE_HASH = "075e8017db915e75b4e68cda3c363bad63afff0e033d4ace3fd3b27cc5e265d0";
 
 bool removeSLSsteamFromEnvVar(const char* varName)
 {
@@ -77,6 +83,36 @@ void* SLSsteam_init(void*)
 			auto path = std::filesystem::path(g_modSteamClient.path);
 			auto dir = path.parent_path();
 			Utils::log("steamclient.so loaded from %s/%s at %p\n", dir.filename().c_str(), path.filename().c_str(), g_modSteamClient.base);
+
+			if (g_config.safeMode)
+			{
+				std::ifstream steamclient(path, std::ios::binary);
+				if (!steamclient.is_open())
+				{
+					Utils::log("Failed to open steamclient.so for hash checking!");
+					return nullptr;
+				}
+
+				std::vector<unsigned char> steamclientBytes(std::istreambuf_iterator<char>(steamclient), {});
+				unsigned char sha256Bytes[SHA256_DIGEST_LENGTH];
+				SHA256(steamclientBytes.data(), steamclientBytes.size(), sha256Bytes);
+
+				std::stringstream sha256;
+				for(int i = 0; i < SHA256_DIGEST_LENGTH; i++)
+				{
+					sha256 << std::hex << std::setw(2) << std::setfill('0') << (int)sha256Bytes[i];
+				}
+				Utils::log("steamclient.so hash is %s\n", sha256.str().c_str());
+
+				steamclient.close();
+
+				if (strcmp(sha256.str().c_str(), SAFE_HASH) != 0)
+				{
+					Utils::warn("Unknown steamclient.so hash! Aborting initialization");
+					return nullptr;
+				}
+			}
+
 			break;
 		}
 

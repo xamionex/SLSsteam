@@ -25,6 +25,7 @@ public:
 	bool useWhiteList;
 	bool automaticFilter;
 	bool playNotOwnedGames;
+	bool safeMode;
 	bool extendedLogging;
 
 	std::string getDir();

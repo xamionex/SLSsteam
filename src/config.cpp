@@ -31,6 +31,9 @@ static const char* defaultConfig =
 "PlayNotOwnedGames: no\n\n"
 "#Additional AppIds to inject (Overrides your black-/whitelist & also overrides OwnerIds for apps you got shared!) Best to use this only on games NOT in your library.\n"
 "AdditionalApps:\n\n"
+"#Automatically disable SLSsteam when steamclient.so does not match a predefined file hash that is known to work\n"
+"#You should enable this if you're planing to use SLSsteam with Steam Deck's gamemode"
+"SafeMode: no\n\n"
 "#Logs all calls to Steamworks (this makes the logfile huge! Only useful for debugging/analyzing\n"
 "ExtendedLogging: no";
 
@@ -114,6 +117,7 @@ bool CConfig::loadSettings()
 	appIds = getSetting(node, "AppIds", std::vector<uint32_t>());
 	playNotOwnedGames = getSetting<bool>(node, "PlayNotOwnedGames", false);
 	addedAppIds = getSetting(node, "AdditionalApps", std::vector<uint32_t>());
+	safeMode = getSetting<bool>(node, "SafeMode", false);
 	extendedLogging = getSetting<bool>(node, "ExtendedLogging", false);
 
 	//TODO: Create smart logging function to log them automatically via getSetting
@@ -131,6 +135,7 @@ bool CConfig::loadSettings()
 	{
 	 	Utils::log("%u\n", appId);
 	}
+	Utils::log("SafeMode: %i\n", safeMode);
 	Utils::log("ExtendedLogging: %i\n", extendedLogging);
 
 	return true;
