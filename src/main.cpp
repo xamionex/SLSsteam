@@ -62,7 +62,7 @@ void* SLSsteam_init(void*)
 	}
 
 	Utils::init();
-	Utils::log("Running in %s\nInitializing...\n", proc.name);
+	Utils::notify("SLSsteam loading...");
 
 	removeSLSsteamFromEnvVar("LD_AUDIT");
 	removeSLSsteamFromEnvVar("LD_PRELOAD");

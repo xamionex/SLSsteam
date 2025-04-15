@@ -45,7 +45,7 @@ public:
 			//MessageBox* box = new MessageBox("SLSsteam", msg);
 			//box->showAsync();
 
-			Utils::log(msg);
+			Utils::warn(msg);
 		}
 		else
 		{
@@ -55,7 +55,7 @@ public:
 			}
 			catch (YAML::BadConversion& er)
 			{
-				Utils::log("Failed to parse value of %s! Using default\n", name);
+				Utils::notify("Failed to parse value of {}! Using default\n", name);
 			}
 		}
 

@@ -2,6 +2,8 @@
 #include "libmem/libmem.h"
 
 #include <cstdio>
+#include <cstdlib>
+#include <format>
 #include <string>
 #include <vector>
 
@@ -24,6 +26,30 @@ namespace Utils
 		fflush(logFile);
 	}
 	void log(const char* msg);
+
+	template<typename ...Args>
+	void __notify(const char* urgency, const char *fmt, Args... args)
+	{
+		auto msg = std::vformat(fmt, std::make_format_args(args...));
+		auto cmd = std::vformat("notify-send -u {} \"SLSsteam\" \"{}\"", std::make_format_args(urgency, msg));
+
+		system(cmd.c_str());
+
+		msg.append("\n");
+		log(msg.c_str());
+	}
+
+	template<typename ...Args>
+	void notify(const char *fmt, Args... args)
+	{
+		__notify("normal", fmt, args...);
+	}
+
+	template<typename ...Args>
+	void warn(const char *fmt, Args... args)
+	{
+		__notify("critical", fmt, args...);
+	}
 
 	void init();
 

@@ -359,7 +359,7 @@ void Hooks::setup()
 			getSubscribedApps
 		}))
 	{
-		Utils::log("Not all patterns found! Aborting...");
+		Utils::warn("Not all patterns found! Aborting...");
 		return;
 	}
 
