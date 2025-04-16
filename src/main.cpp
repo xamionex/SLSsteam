@@ -34,7 +34,7 @@ bool removeSLSsteamFromEnvVar(const char* varName)
 		auto split = splits.at(i);
 		if (split.ends_with("SLSsteam.so"))
 		{
-			Utils::log("Removed %s from $%s\n", split.c_str(), varName);
+			Utils::log("Removed SLSsteam.so from $%s\n", varName);
 			continue;
 		}
 
@@ -46,7 +46,7 @@ bool removeSLSsteamFromEnvVar(const char* varName)
 	}
 
 	setenv(varName, newEnv.c_str(), 1);
-	Utils::log("Set %s to %s\n", varName, newEnv.c_str());
+	//Utils::log("Set %s to %s\n", varName, newEnv.c_str());
 
 	return true;
 }
