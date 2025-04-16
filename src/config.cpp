@@ -32,8 +32,11 @@ static const char* defaultConfig =
 "#Additional AppIds to inject (Overrides your black-/whitelist & also overrides OwnerIds for apps you got shared!) Best to use this only on games NOT in your library.\n"
 "AdditionalApps:\n\n"
 "#Automatically disable SLSsteam when steamclient.so does not match a predefined file hash that is known to work\n"
-"#You should enable this if you're planing to use SLSsteam with Steam Deck's gamemode"
+"#You should enable this if you're planing to use SLSsteam with Steam Deck's gamemode\n"
 "SafeMode: no\n\n"
+"#Warn user via notification when steamclient.so hash differs from known safe hash\n"
+"#Mostly useful for development so I don't accidentally miss an update\n"
+"WarnHashMissmatch: no\n\n"
 "#Logs all calls to Steamworks (this makes the logfile huge! Only useful for debugging/analyzing\n"
 "ExtendedLogging: no";
 
@@ -118,6 +121,7 @@ bool CConfig::loadSettings()
 	playNotOwnedGames = getSetting<bool>(node, "PlayNotOwnedGames", false);
 	addedAppIds = getSetting(node, "AdditionalApps", std::vector<uint32_t>());
 	safeMode = getSetting<bool>(node, "SafeMode", false);
+	warnHashMissmatch = getSetting<bool>(node, "WarnHashMissmatch", false);
 	extendedLogging = getSetting<bool>(node, "ExtendedLogging", false);
 
 	//TODO: Create smart logging function to log them automatically via getSetting
@@ -136,6 +140,7 @@ bool CConfig::loadSettings()
 	 	Utils::log("%u\n", appId);
 	}
 	Utils::log("SafeMode: %i\n", safeMode);
+	Utils::log("WarnHashMissmatch: %i\n", warnHashMissmatch);
 	Utils::log("ExtendedLogging: %i\n", extendedLogging);
 
 	return true;

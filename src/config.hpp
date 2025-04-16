@@ -26,6 +26,7 @@ public:
 	bool automaticFilter;
 	bool playNotOwnedGames;
 	bool safeMode;
+	bool warnHashMissmatch;
 	bool extendedLogging;
 
 	std::string getDir();

@@ -68,7 +68,7 @@ void* SLSsteam_init(void*)
 	}
 
 	Utils::init();
-	Utils::notify("SLSsteam loading...");
+	Utils::log("SLSsteam loaded in %s\n", proc.name);
 
 	removeSLSsteamFromEnvVar("LD_AUDIT");
 	removeSLSsteamFromEnvVar("LD_PRELOAD");
@@ -84,32 +84,35 @@ void* SLSsteam_init(void*)
 			auto dir = path.parent_path();
 			Utils::log("steamclient.so loaded from %s/%s at %p\n", dir.filename().c_str(), path.filename().c_str(), g_modSteamClient.base);
 
-			if (g_config.safeMode)
+			std::ifstream steamclient(path, std::ios::binary);
+			if (!steamclient.is_open())
 			{
-				std::ifstream steamclient(path, std::ios::binary);
-				if (!steamclient.is_open())
-				{
-					Utils::log("Failed to open steamclient.so for hash checking!");
-					return nullptr;
-				}
+				Utils::warn("Failed to open steamclient.so for hash checking!");
+				return nullptr;
+			}
 
-				std::vector<unsigned char> steamclientBytes(std::istreambuf_iterator<char>(steamclient), {});
-				unsigned char sha256Bytes[SHA256_DIGEST_LENGTH];
-				SHA256(steamclientBytes.data(), steamclientBytes.size(), sha256Bytes);
+			std::vector<unsigned char> steamclientBytes(std::istreambuf_iterator<char>(steamclient), {});
+			unsigned char sha256Bytes[SHA256_DIGEST_LENGTH];
+			SHA256(steamclientBytes.data(), steamclientBytes.size(), sha256Bytes);
 
-				std::stringstream sha256;
-				for(int i = 0; i < SHA256_DIGEST_LENGTH; i++)
-				{
-					sha256 << std::hex << std::setw(2) << std::setfill('0') << (int)sha256Bytes[i];
-				}
-				Utils::log("steamclient.so hash is %s\n", sha256.str().c_str());
+			std::stringstream sha256;
+			for(int i = 0; i < SHA256_DIGEST_LENGTH; i++)
+			{
+				sha256 << std::hex << std::setw(2) << std::setfill('0') << (int)sha256Bytes[i];
+			}
+			Utils::log("steamclient.so hash is %s\n", sha256.str().c_str());
 
-				steamclient.close();
-
-				if (strcmp(sha256.str().c_str(), SAFE_HASH) != 0)
+			steamclient.close();
+			if (strcmp(sha256.str().c_str(), SAFE_HASH) != 0)
+			{
+				if (g_config.safeMode)
 				{
 					Utils::warn("Unknown steamclient.so hash! Aborting initialization");
 					return nullptr;
+				}
+				else if(g_config.warnHashMissmatch)
+				{
+					Utils::warn("Unknown steamclient.so hash!");
 				}
 			}
 
@@ -118,6 +121,8 @@ void* SLSsteam_init(void*)
 
 		usleep(1000 * 1000 * 1);
 	}
+
+	Utils::notify("SLSsteam placing hooks");
 
 	Hooks::setup();
 	return nullptr;
