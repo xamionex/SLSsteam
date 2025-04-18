@@ -32,6 +32,11 @@ void Utils::init()
 		exit(1);
 }
 
+void Utils::shutdown()
+{
+	fclose(logFile);
+}
+
 std::vector<std::string> Utils::strsplit(char *str, const char *delimeter)
 {
 	auto splits = std::vector<std::string>();
@@ -167,7 +172,7 @@ bool Utils::fixPICThunkCall(const char* name, lm_address_t fn, lm_address_t tram
 		{
 			if (!LM_Disassemble(followAddress, &inst))
 			{
-				Utils::log("Unable to dissassemble code at %p\n", followAddress + curTrampOffset);
+				Utils::log("Unable to dissassemble code at %p\n", followAddress);
 				return false;
 			}
 
@@ -213,6 +218,7 @@ bool Utils::fixPICThunkCall(const char* name, lm_address_t fn, lm_address_t tram
 		LM_WriteMemory(startAddress, inst.bytes, inst.size);
 		LM_ProtMemory(startAddress, inst.size, oldProt, nullptr);
 		Utils::log("Replaced PIC thunk call for %s at %p with %s\n", name, followAddress, newInstr);
+		return true;
 	}
 
 	return false;

@@ -52,6 +52,7 @@ namespace Utils
 	}
 
 	void init();
+	void shutdown();
 
 	std::vector<std::string> strsplit(char* str, const char* delimeter);
 

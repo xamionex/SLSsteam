@@ -6,6 +6,6 @@
 
 namespace Hooks
 {
-	void setup();
+	bool setup();
 	bool checkAddresses(std::vector<lm_address_t>);
 }

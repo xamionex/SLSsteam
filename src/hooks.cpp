@@ -327,7 +327,7 @@ static void patchRetn(lm_address_t address)
 	LM_ProtMemory(address, 1, oldProt, LM_NULL);
 }
 
-void Hooks::setup()
+bool Hooks::setup()
 {
 	Utils::log("Hooks::setup()\n");
 
@@ -360,7 +360,7 @@ void Hooks::setup()
 		}))
 	{
 		Utils::warn("Not all patterns found! Aborting...");
-		return;
+		return false;
 	}
 
 	LM_HookCode(logSteamPipeCall, reinterpret_cast<lm_address_t>(hkLogSteamPipeCall), reinterpret_cast<lm_address_t*>(&LogSteamPipeCall));
@@ -382,6 +382,8 @@ void Hooks::setup()
 	LM_HookCode(isSubscribedApp, reinterpret_cast<lm_address_t>(hkClientUser_BIsSubscribedApp), reinterpret_cast<lm_address_t*>(&IClientUser_BIsSubscribedApp));
 	LM_HookCode(getSubscribedApps, reinterpret_cast<lm_address_t>(hkClientUser_GetSubscribedApps), reinterpret_cast<lm_address_t*>(&IClientUser_GetSubscribedApps));
 	Utils::fixPICThunkCall("ISteamUser::GetSubscribedApps", getSubscribedApps, reinterpret_cast<lm_address_t>(IClientUser_GetSubscribedApps));
+
+	return true;
 }
 
 bool Hooks::checkAddresses(std::vector<lm_address_t> addresses)

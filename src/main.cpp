@@ -108,6 +108,7 @@ void* SLSsteam_init(void*)
 				if (g_config.safeMode)
 				{
 					Utils::warn("Unknown steamclient.so hash! Aborting initialization");
+					Utils::shutdown();
 					return nullptr;
 				}
 				else if(g_config.warnHashMissmatch)
@@ -124,7 +125,11 @@ void* SLSsteam_init(void*)
 
 	Utils::notify("SLSsteam placing hooks");
 
-	Hooks::setup();
+	if (!Hooks::setup())
+	{
+		Utils::shutdown();
+	}
+
 	return nullptr;
 }
 
