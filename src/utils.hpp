@@ -55,6 +55,7 @@ namespace Utils
 	void shutdown();
 
 	std::vector<std::string> strsplit(char* str, const char* delimeter);
+	std::string getFileSHA256(const char* filePath);
 
 	lm_address_t searchSignature(const char* name, const char* signature, lm_module_t module, SigFollowMode);
 	lm_address_t searchSignature(const char* name, const char* signature, lm_module_t module);

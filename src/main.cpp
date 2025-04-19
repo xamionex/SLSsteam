@@ -5,22 +5,20 @@
 
 #include "libmem/libmem.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <link.h>
 #include <pthread.h>
-#include <cstdio>
-#include <sstream>
+#include <stdexcept>
 #include <string>
+#include <sys/types.h>
 #include <unistd.h>
 
-#include <openssl/sha.h>
+const char* EXPECTED_STEAMCLIENT_HASH = "075e8017db915e75b4e68cda3c363bad63afff0e033d4ace3fd3b27cc5e265d0";
 
-const char* SAFE_HASH = "075e8017db915e75b4e68cda3c363bad63afff0e033d4ace3fd3b27cc5e265d0";
-
-bool removeSLSsteamFromEnvVar(const char* varName)
+bool cleanEnvVar(const char* varName)
 {
 	char* var = getenv(varName);
 	if (var == NULL)
@@ -51,6 +49,29 @@ bool removeSLSsteamFromEnvVar(const char* varName)
 	return true;
 }
 
+bool verifySteamClientHash()
+{
+	LM_FindModule("steamclient.so", &g_modSteamClient);
+
+	auto path = std::filesystem::path(g_modSteamClient.path);
+	auto dir = path.parent_path();
+	Utils::log("steamclient.so loaded from %s/%s at %p\n", dir.filename().c_str(), path.filename().c_str(), g_modSteamClient.base);
+
+	try
+	{
+		std::string sha256 = Utils::getFileSHA256(path.c_str());
+		Utils::log("steamclient.so hash is %s\n", sha256.c_str());
+
+		//TODO: Research if there's a better way to compare const char* to std::string
+		return strcmp(sha256.c_str(), EXPECTED_STEAMCLIENT_HASH) == 0;
+	}
+	catch(std::runtime_error& err)
+	{
+		Utils::log("Unable to read steamclient.so hash!\n");
+		return false;
+	}
+}
+
 static pthread_t SLSsteam_mainThread;
 
 void* SLSsteam_init(void*)
@@ -68,80 +89,50 @@ void* SLSsteam_init(void*)
 	}
 
 	Utils::init();
-	Utils::log("SLSsteam loaded in %s\n", proc.name);
+	Utils::log("SLSsteam loading in %s\n", proc.name);
 
-	removeSLSsteamFromEnvVar("LD_AUDIT");
-	removeSLSsteamFromEnvVar("LD_PRELOAD");
+	cleanEnvVar("LD_AUDIT");
+	cleanEnvVar("LD_PRELOAD");
 
 	g_config.init();
 
-	//TODO: Replace with Mutex (does not seem possible)
-	for(;;)
+	if (!verifySteamClientHash())
 	{
-		if(LM_FindModule("steamclient.so", &g_modSteamClient))
+		if (g_config.safeMode)
 		{
-			auto path = std::filesystem::path(g_modSteamClient.path);
-			auto dir = path.parent_path();
-			Utils::log("steamclient.so loaded from %s/%s at %p\n", dir.filename().c_str(), path.filename().c_str(), g_modSteamClient.base);
-
-			std::ifstream steamclient(path, std::ios::binary);
-			if (!steamclient.is_open())
-			{
-				Utils::warn("Failed to open steamclient.so for hash checking!");
-				return nullptr;
-			}
-
-			std::vector<unsigned char> steamclientBytes(std::istreambuf_iterator<char>(steamclient), {});
-			unsigned char sha256Bytes[SHA256_DIGEST_LENGTH];
-			SHA256(steamclientBytes.data(), steamclientBytes.size(), sha256Bytes);
-
-			std::stringstream sha256;
-			for(int i = 0; i < SHA256_DIGEST_LENGTH; i++)
-			{
-				sha256 << std::hex << std::setw(2) << std::setfill('0') << (int)sha256Bytes[i];
-			}
-			Utils::log("steamclient.so hash is %s\n", sha256.str().c_str());
-
-			steamclient.close();
-			if (strcmp(sha256.str().c_str(), SAFE_HASH) != 0)
-			{
-				if (g_config.safeMode)
-				{
-					Utils::warn("Unknown steamclient.so hash! Aborting initialization");
-					Utils::shutdown();
-					return nullptr;
-				}
-				else if(g_config.warnHashMissmatch)
-				{
-					Utils::warn("Unknown steamclient.so hash!");
-				}
-			}
-
-			break;
+			Utils::warn("Unknown steamclient.so hash! Aborting...");
+			Utils::shutdown();
+			return nullptr;
 		}
-
-		usleep(1000 * 1000 * 1);
+		else if (g_config.warnHashMissmatch)
+		{
+			Utils::warn("steamclient.so hash missmatch! Please update :)");
+		}
 	}
-
-	Utils::notify("SLSsteam placing hooks");
 
 	if (!Hooks::setup())
 	{
 		Utils::shutdown();
+		return nullptr;
 	}
 
+	Utils::notify("SLSsteam loaded");
 	return nullptr;
-}
-
-__attribute__((constructor)) static void init()
-{
-	if(pthread_create(&SLSsteam_mainThread, nullptr, SLSsteam_init, nullptr))
-	{
-		exit(1);
-	}
 }
 
 unsigned int la_version(unsigned int)
 {
 	return LAV_CURRENT;
+}
+
+unsigned int la_objopen(struct link_map *map, __attribute__((unused)) Lmid_t lmid, __attribute__((unused)) uintptr_t *cookie)
+{
+	if (std::string(map->l_name).ends_with("/steamclient.so"))
+	{
+		if(pthread_create(&SLSsteam_mainThread, nullptr, SLSsteam_init, nullptr))
+		{
+			Utils::warn("Failed to create SLSsteam thread!\nAborting");
+		}
+	}
+	return 0;
 }
