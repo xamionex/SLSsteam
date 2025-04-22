@@ -71,18 +71,18 @@ bool CConfig::init()
 		{
 			if (!std::filesystem::create_directories(dir))
 			{
-				Utils::log("Unable to create config directory at %s!\n", dir.c_str());
+				g_pLog->debug("Unable to create config directory at %s!\n", dir.c_str());
 				loadSettings();
 				return false;
 			}
 
-			Utils::log("Created config directory at %s\n");
+			g_pLog->debug("Created config directory at %s\n");
 		}
 
 		FILE* file = fopen(path.c_str(), "w");
 		if (!file)
 		{
-			Utils::log("Unable to create config at %s!\n", path.c_str());
+			g_pLog->debug("Unable to create config at %s!\n", path.c_str());
 			loadSettings();
 			return false;
 		}
@@ -105,12 +105,12 @@ bool CConfig::loadSettings()
 	}
 	catch (YAML::BadFile& bf)
 	{
-		Utils::log("Can not read config.yaml! %s\nUsing defaults\n", bf.msg.c_str());
+		g_pLog->debug("Can not read config.yaml! %s\nUsing defaults\n", bf.msg.c_str());
 		node = YAML::Node(); //Create empty node and let defaults kick in
 	}
 	catch (YAML::ParserException& pe)
 	{
-		Utils::log("Error parsing config.yaml! %s\nUsing defaults\n", pe.msg.c_str());
+		g_pLog->debug("Error parsing config.yaml! %s\nUsing defaults\n", pe.msg.c_str());
 		node = YAML::Node(); //Create empty node and let defaults kick in
 	}
 	
@@ -125,23 +125,23 @@ bool CConfig::loadSettings()
 	extendedLogging = getSetting<bool>(node, "ExtendedLogging", false);
 
 	//TODO: Create smart logging function to log them automatically via getSetting
-	Utils::log("DisableFamilyShareLock: %i\n", disableFamilyLock);
-	Utils::log("UseWhitelist: %i\n", useWhiteList);
-	Utils::log("AutoFilterList: %i\n", automaticFilter);
-	Utils::log("AppIds:\n");
+	g_pLog->info("DisableFamilyShareLock: %i\n", disableFamilyLock);
+	g_pLog->info("UseWhitelist: %i\n", useWhiteList);
+	g_pLog->info("AutoFilterList: %i\n", automaticFilter);
+	g_pLog->info("AppIds:\n");
 	for(auto& appId : appIds)
 	{
-	 	Utils::log("%u\n", appId);
+	 	g_pLog->info("%u\n", appId);
 	}
-	Utils::log("PlayNotOwnedGames: %i\n", playNotOwnedGames);
-	Utils::log("AdditionalApps:\n");
+	g_pLog->info("PlayNotOwnedGames: %i\n", playNotOwnedGames);
+	g_pLog->info("AdditionalApps:\n");
 	for(auto& appId : addedAppIds)
 	{
-	 	Utils::log("%u\n", appId);
+	 	g_pLog->info("%u\n", appId);
 	}
-	Utils::log("SafeMode: %i\n", safeMode);
-	Utils::log("WarnHashMissmatch: %i\n", warnHashMissmatch);
-	Utils::log("ExtendedLogging: %i\n", extendedLogging);
+	g_pLog->info("SafeMode: %i\n", safeMode);
+	g_pLog->info("WarnHashMissmatch: %i\n", warnHashMissmatch);
+	g_pLog->info("ExtendedLogging: %i\n", extendedLogging);
 
 	return true;
 }
@@ -182,7 +182,7 @@ bool CConfig::shouldExcludeAppId(uint32_t appId)
 	}
 
 	_cachedAppIds[appId] = exclude;
-	Utils::log("shouldExcludeAppId(%u) -> %i\n", appId, exclude);
+	g_pLog->debug("shouldExcludeAppId(%u) -> %i\n", appId, exclude);
 	return exclude;
 }
 

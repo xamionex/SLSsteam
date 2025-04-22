@@ -1,8 +1,8 @@
 #include "config.hpp"
 #include "globals.hpp"
 #include "hooks.hpp"
+#include "log.hpp"
 #include "patterns.hpp"
-#include "sdk/IClientApps.hpp"
 #include "utils.hpp"
 #include "vftableinfo.hpp"
 
@@ -10,8 +10,9 @@
 
 #include "sdk/CAppOwnershipInfo.hpp"
 #include "sdk/CSteamID.hpp"
-#include "sdk/IClientUser.hpp"
+#include "sdk/IClientApps.hpp"
 #include "sdk/IClientAppManager.hpp"
+#include "sdk/IClientUser.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -31,7 +32,7 @@ static void hkLogSteamPipeCall(const char* iface, const char* fn)
 
 	if (g_config.extendedLogging)
 	{
-		Utils::log("LogSteamPipeCall(%s, %s)\n", iface, fn);
+		g_pLog->debug("LogSteamPipeCall(%s, %s)\n", iface, fn);
 	}
 }
 
@@ -43,15 +44,15 @@ static auto appIdOwnerOverride = std::map<uint32_t, int>();
 static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOwnershipInfo)
 {
 	const bool ret = CheckAppOwnership(a0, appId, pOwnershipInfo);
-	//Logging disabled, cause it's only useful for debugging and happens a lot
-	//Utils::log("CheckAppOwnership(%p, %u, %p) -> %i\n", a0, appId, pOwnershipInfo, ret);
-	
+
 	//Wait Until GetSubscribedApps gets called once to let Steam request and populate legit data first.
 	//Afterwards modifying should hopefully not affect false positives anymore
 	if (!applistRequested || g_config.shouldExcludeAppId(appId) || !pOwnershipInfo || !g_currentUserAccountId)
 	{
 		return ret;
 	}
+
+	g_pLog->once("CheckAppOwnership(%p, %u, %p) -> %i\n", a0, appId, pOwnershipInfo, ret);
 
 	if (g_config.isAddedAppId(appId) || (g_config.playNotOwnedGames && !pOwnershipInfo->purchased))
 	{
@@ -71,7 +72,7 @@ static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOw
 
 		if(g_config.addAdditionalAppId(appId))
 		{
-			Utils::log("Force owned %u\n", appId);
+			g_pLog->info("Force owned %u\n", appId);
 		}
 	}
 
@@ -126,7 +127,7 @@ static void* hkClientAppManager_LaunchApp(void* pClientAppManager, uint32_t* pAp
 
 	if (pAppId)
 	{
-		Utils::log("IClientAppManager::LaunchApp(%p, %u, %p, %p, %p)\n", pClientAppManager, *pAppId, a2, a3, a4);
+		g_pLog->once("IClientAppManager::LaunchApp(%p, %u, %p, %p, %p)\n", pClientAppManager, *pAppId, a2, a3, a4);
 		appIdOwnerOverride[*pAppId] = 0;
 	}
 
@@ -142,13 +143,13 @@ static bool hkClientAppManager_IsAppDlcInstalled(void* pClientAppManager, uint32
 	);
 
 	const bool ret = o(pClientAppManager, appId, dlcId);
-	Utils::log("IClientAppManager::IsAppDlcInstalled(%p, %u, %u) -> %i\n", pClientAppManager, appId, dlcId, ret);
+	g_pLog->once("IClientAppManager::IsAppDlcInstalled(%p, %u, %u) -> %i\n", pClientAppManager, appId, dlcId, ret);
 
 	//Do not pretend things are installed while downloading Apps, otherwise downloads will break for some of them
 	auto state = g_pClientAppManager->getAppInstallState(appId);
 	if (state & EAppState::Downloading || state & EAppState::Installing)
 	{
-		Utils::log("Skipping DlcId %u because AppId %u has AppState %i\n", dlcId, appId, state);
+		g_pLog->once("Skipping DlcId %u because AppId %u has AppState %i\n", dlcId, appId, state);
 		return ret;
 	}
 
@@ -168,7 +169,7 @@ static bool hkClientAppManager_BIsDlcEnabled(void* pClientAppManager, uint32_t a
 	);
 
 	const bool ret = o(pClientAppManager, appId, dlcId, a3);
-	Utils::log("IClientAppManager::BIsDlcEnabled(%p, %u, %u, %p) -> %i\n", pClientAppManager, appId, dlcId, a3, ret);
+	g_pLog->once("IClientAppManager::BIsDlcEnabled(%p, %u, %u, %p) -> %i\n", pClientAppManager, appId, dlcId, a3, ret);
 
 	if (g_config.shouldExcludeAppId(dlcId))
 	{
@@ -193,7 +194,7 @@ static void hkClientAppManager_PipeLoop(void* pClientAppManager, void* a1, void*
 		LM_VmtHook(&IClientAppManager_vmt, VFTIndexes::IClientAppManager::LaunchApp, reinterpret_cast<lm_address_t>(&hkClientAppManager_LaunchApp));
 		LM_VmtHook(&IClientAppManager_vmt, VFTIndexes::IClientAppManager::IsAppDlcInstalled, reinterpret_cast<lm_address_t>(&hkClientAppManager_IsAppDlcInstalled));
 		LM_VmtHook(&IClientAppManager_vmt, VFTIndexes::IClientAppManager::BIsDlcEnabled, reinterpret_cast<lm_address_t>(&hkClientAppManager_BIsDlcEnabled));
-		Utils::log("IClientAppManager->vft at %p\n", IClientAppManager_vmt.vtable);
+		g_pLog->debug("IClientAppManager->vft at %p\n", IClientAppManager_vmt.vtable);
 		hooked = true;
 	}
 
@@ -211,7 +212,7 @@ static bool hkGetDLCDataByIndex(void* pClientApps, uint32_t appId, int dlcIndex,
 	);
 
 	const bool ret = o(pClientApps, appId, dlcIndex, pDlcId, pIsAvailable, dlcName, dlcNameLen);
-	Utils::log("IClientApps::GetDLCDataByIndex(%p, %u, %i, %p, %p, %s, %i) -> %i\n", pClientApps, appId, dlcIndex, pDlcId, pIsAvailable, dlcName, dlcNameLen, ret);
+	g_pLog->once("IClientApps::GetDLCDataByIndex(%p, %u, %i, %p, %p, %s, %i) -> %i\n", pClientApps, appId, dlcIndex, pDlcId, pIsAvailable, dlcName, dlcNameLen, ret);
 
 	if (pIsAvailable && pDlcId && !g_config.shouldExcludeAppId(*pDlcId))
 	{
@@ -234,7 +235,7 @@ static void hkClientApps_PipeLoop(void* pClientApps, void* a1, void* a2, void* a
 		LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientApps), &IClientApps_vmt);
 
 		LM_VmtHook(&IClientApps_vmt, VFTIndexes::IClientApps::GetDLCDataByIndex, reinterpret_cast<lm_address_t>(&hkGetDLCDataByIndex));
-		Utils::log("IClientApps->vft at %p\n", IClientApps_vmt.vtable);
+		g_pLog->debug("IClientApps->vft at %p\n", IClientApps_vmt.vtable);
 		hooked = true;
 	}
 	return IClientApps_PipeLoop(pClientApps, a1, a2, a3);
@@ -251,7 +252,7 @@ static CSteamId* hkClientUser_GetSteamId(void* pClientUser, void* a1)
 	if (!g_currentUserAccountId && id && id->steamId)
 	{
 		g_currentUserAccountId = id->steamId;
-		Utils::log("AcccountId grabbed!\n");
+		g_pLog->debug("AcccountId grabbed!\n");
 	}
 
 	return id;
@@ -263,7 +264,7 @@ static bool hkClientUser_BIsSubscribedApp(void* pClientUser, uint32_t appId)
 {
 	const bool ret = IClientUser_BIsSubscribedApp(pClientUser, appId);
 
-	Utils::log("IClientUser::BIsSubscribedApp(%p, %u) -> %i\n", pClientUser, appId, ret);
+	g_pLog->once("IClientUser::BIsSubscribedApp(%p, %u) -> %i\n", pClientUser, appId, ret);
 
 	if (g_config.shouldExcludeAppId(appId))
 	{
@@ -278,7 +279,7 @@ static uint32_t (*IClientUser_GetSubscribedApps)(void*, uint32_t*, size_t, bool)
 static uint32_t hkClientUser_GetSubscribedApps(void* pClientUser, uint32_t* pAppList, size_t size, bool a3)
 {
 	uint32_t count = IClientUser_GetSubscribedApps(pClientUser, pAppList, size, a3);
-	Utils::log("IClientUser::GetSubscribedApps(%p, %p, %i, %i) -> %i\n", pClientUser, pAppList, size, a3, count);
+	g_pLog->once("IClientUser::GetSubscribedApps(%p, %p, %i, %i) -> %i\n", pClientUser, pAppList, size, a3, count);
 
 	//Valve calls this function twice, once with size of 0 then again
 	if (!size || !pAppList)
@@ -300,7 +301,7 @@ static void(*IClientUser_PipeLoop)(void*, void*, void*, void*);
 [[gnu::hot]]
 static void hkClientUser_PipeLoop(void* pClientUser, void* a1, void* a2, void* a3)
 {
-	//Utils::log("IClientUser::PipeLoop(%p, %p, %p, %p)\n", pClientUser, a1, a2, a3);
+	//g_pLog->debug("IClientUser::PipeLoop(%p, %p, %p, %p)\n", pClientUser, a1, a2, a3);
 	static bool hooked = false;
 	if (!hooked)
 	{
@@ -310,7 +311,7 @@ static void hkClientUser_PipeLoop(void* pClientUser, void* a1, void* a2, void* a
 
 		LM_VmtHook(&IClientUser_vmt, VFTIndexes::IClientUser::GetSteamID, reinterpret_cast<lm_address_t>(&hkClientUser_GetSteamId));
 
-		Utils::log("IClientUser->vft at %p\n", IClientUser_vmt.vtable);
+		g_pLog->debug("IClientUser->vft at %p\n", IClientUser_vmt.vtable);
 		hooked = true;
 	}
 
@@ -329,7 +330,7 @@ static void patchRetn(lm_address_t address)
 
 bool Hooks::setup()
 {
-	Utils::log("Hooks::setup()\n");
+	g_pLog->debug("Hooks::setup()\n");
 
 	lm_address_t logSteamPipeCall = Utils::searchSignature("LogSteamPipeCall", Patterns::LogSteamPipeCall, g_modSteamClient, Utils::SigFollowMode::Relative);
 	lm_address_t checkAppOwnership = Utils::searchSignature("CheckAppOwnership", Patterns::CheckAppOwnership, g_modSteamClient, Utils::SigFollowMode::Relative);
@@ -343,7 +344,7 @@ bool Hooks::setup()
 	//Searching this one via pattern because it's index is 100+, which breaks often
 	lm_address_t isSubscribedApp = Utils::searchSignature("IClientUser::BIsSubscribedApp", Patterns::IsSubscribedApp, g_modSteamClient, Utils::SigFollowMode::Relative);
 	//Searching this one via pattern because it needs to be hooked as early as possible
-	lm_address_t getSubscribedApps = Utils::searchSignature("IClientUser::GetSubsribedApps", Patterns::GetSubscribedApps, g_modSteamClient, Utils::SigFollowMode::Relative);
+	lm_address_t getSubscribedApps = Utils::searchSignature("IClientUser::GetSubscribedApps", Patterns::GetSubscribedApps, g_modSteamClient, Utils::SigFollowMode::Relative);
 
 	//TODO: Improve logging further, in case user encounters error I can't replicate
 	if (!checkAddresses
@@ -359,7 +360,7 @@ bool Hooks::setup()
 			getSubscribedApps
 		}))
 	{
-		Utils::warn("Not all patterns found! Aborting...");
+		g_pLog->warn("Not all patterns found! Aborting...");
 		return false;
 	}
 

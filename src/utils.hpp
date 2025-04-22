@@ -16,44 +16,6 @@ namespace Utils
 		PrologueUpwards
 	};
 
-	extern FILE* logFile;
-
-	//AFAIK variadic args do not work in cpp files, probably wrong though
-	template<typename ...Args>
-	void log(const char *fmt, Args... args)
-	{
-		fprintf(logFile, fmt, args...);
-		fflush(logFile);
-	}
-	void log(const char* msg);
-
-	template<typename ...Args>
-	void __notify(const char* urgency, const char *fmt, Args... args)
-	{
-		auto msg = std::vformat(fmt, std::make_format_args(args...));
-		auto cmd = std::vformat("notify-send -u {} \"SLSsteam\" \"{}\"", std::make_format_args(urgency, msg));
-
-		system(cmd.c_str());
-
-		msg.append("\n");
-		log(msg.c_str());
-	}
-
-	template<typename ...Args>
-	void notify(const char *fmt, Args... args)
-	{
-		__notify("normal", fmt, args...);
-	}
-
-	template<typename ...Args>
-	void warn(const char *fmt, Args... args)
-	{
-		__notify("critical", fmt, args...);
-	}
-
-	void init();
-	void shutdown();
-
 	std::vector<std::string> strsplit(char* str, const char* delimeter);
 	std::string getFileSHA256(const char* filePath);
 
@@ -63,7 +25,7 @@ namespace Utils
 	lm_address_t getJmpTarget(lm_address_t address);
 	lm_address_t findPrologue(lm_address_t address);
 
-//TODO: Create hooking wrapper that calls this automatically
+	//TODO: Create hooking wrapper that calls this automatically
 	bool fixPICThunkCall(const char* name, lm_address_t fn, lm_address_t tramp);
 	
 	template<typename tFN, typename ...Args>

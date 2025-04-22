@@ -1,4 +1,5 @@
 #include "utils.hpp"
+#include "log.hpp"
 
 #include "libmem/libmem.h"
 
@@ -15,34 +16,6 @@
 #include <vector>
 
 #include <openssl/sha.h>
-
-FILE* Utils::logFile;
-
-void Utils::log(const char* msg)
-{
-	log(msg, nullptr);
-}
-
-void Utils::init()
-{
-	char path[255];
-	const char* home = getenv("HOME");
-	if (!home)
-		exit(1);
-
-	strcat(path, home);
-	strcat(path, "/.SLSsteam.log");
-
-	logFile = fopen(path, "w");
-	
-	if (!logFile)
-		exit(1);
-}
-
-void Utils::shutdown()
-{
-	fclose(logFile);
-}
 
 std::vector<std::string> Utils::strsplit(char *str, const char *delimeter)
 {
@@ -93,19 +66,19 @@ lm_address_t Utils::searchSignature(const char* name, const char* signature, lm_
 	lm_address_t address = LM_SigScan(signature, module.base, module.size);
 	if (address == LM_ADDRESS_BAD)
 	{
-		Utils::log("Unable to find signature for %s!\n", name);
+		g_pLog->debug("Unable to find signature for %s!\n", name);
 	}
 	else
 	{
 		switch (mode)
 		{
 			case SigFollowMode::Relative:
-				Utils::log("Resolving relative of %s at %p\n", name, address);
+				g_pLog->debug("Resolving relative of %s at %p\n", name, address);
 				address = Utils::getJmpTarget(address);
 				break;
 
 			case SigFollowMode::PrologueUpwards:
-				Utils::log("Searching function prologue of %s from %p\n", name, address);
+				g_pLog->debug("Searching function prologue of %s from %p\n", name, address);
 				address = Utils::findPrologue(address);
 				break;
 
@@ -113,7 +86,7 @@ lm_address_t Utils::searchSignature(const char* name, const char* signature, lm_
 				break;
 		}
 
-		Utils::log("%s at %p\n", name, address);
+		g_pLog->info("%s at %p\n", name, address);
 	}
 
 	return address;
@@ -129,11 +102,11 @@ lm_address_t Utils::getJmpTarget(lm_address_t address)
 	lm_inst_t inst;
 	if (!LM_Disassemble(address, &inst)) //Should not happen if we land in a code section
 	{
-		Utils::log("Failed to disassemble code at %p!");
+		g_pLog->debug("Failed to disassemble code at %p!");
 		return LM_ADDRESS_BAD;
 	}
 
-	Utils::log("Resolved to %s %s\n", inst.mnemonic, inst.op_str);
+	g_pLog->debug("Resolved to %s %s\n", inst.mnemonic, inst.op_str);
 
 	if (strcmp(inst.mnemonic, "jmp") != 0 && strcmp(inst.mnemonic, "call") != 0)
 		return LM_ADDRESS_BAD;
@@ -162,18 +135,18 @@ lm_address_t Utils::findPrologue(lm_address_t address)
 		if (found)
 		{
 			lm_address_t prol = address - i - bytesSize + 1; //Add 1 byte back since bytesSize would be to big otherwise
-			Utils::log("Prologue found at %p\n", prol);
+			g_pLog->debug("Prologue found at %p\n", prol);
 			return prol;
 		}
 	}
 
-	Utils::log("Unable to find prologue after going up %p bytes!\n", scanSize);
+	g_pLog->debug("Unable to find prologue after going up %p bytes!\n", scanSize);
 	return LM_ADDRESS_BAD;
 }
 
 bool Utils::fixPICThunkCall(const char* name, lm_address_t fn, lm_address_t tramp)
 {
-	Utils::log("Fixing PIC thunks for %s's trampoline\n", name);
+	g_pLog->debug("Fixing PIC thunks for %s's trampoline\n", name);
 	constexpr unsigned int maxBytes = 0x5; //Minimum bytes needed to detour a function, so our tramp will at least be of this size
 	
 	lm_inst_t inst;
@@ -183,12 +156,12 @@ bool Utils::fixPICThunkCall(const char* name, lm_address_t fn, lm_address_t tram
 
 		if (!LM_Disassemble(startAddress, &inst))
 		{
-			Utils::log("Unable to dissassemble code at %p\n", tramp + curTrampOffset);
+			g_pLog->debug("Unable to dissassemble code at %p\n", tramp + curTrampOffset);
 			return false;
 		}
 		
 		curTrampOffset += inst.size;
-		Utils::log("%p: %s %s\n", inst.address, inst.mnemonic, inst.op_str);
+		g_pLog->debug("%p: %s %s\n", inst.address, inst.mnemonic, inst.op_str);
 		
 		if (strcmp(inst.mnemonic, "call") != 0)
 			continue;
@@ -202,13 +175,13 @@ bool Utils::fixPICThunkCall(const char* name, lm_address_t fn, lm_address_t tram
 		{
 			if (!LM_Disassemble(followAddress, &inst))
 			{
-				Utils::log("Unable to dissassemble code at %p\n", followAddress);
+				g_pLog->debug("Unable to dissassemble code at %p\n", followAddress);
 				return false;
 			}
 
 			followAddress += inst.size;
 
-			Utils::log("%p: %s %s\n", inst.address, inst.mnemonic, inst.op_str);
+			g_pLog->debug("%p: %s %s\n", inst.address, inst.mnemonic, inst.op_str);
 
 			//Can not declare in switch statement
 			auto splits = std::vector<std::string>();
@@ -247,7 +220,7 @@ bool Utils::fixPICThunkCall(const char* name, lm_address_t fn, lm_address_t tram
 		LM_ProtMemory(startAddress, inst.size, LM_PROT_XRW, &oldProt);
 		LM_WriteMemory(startAddress, inst.bytes, inst.size);
 		LM_ProtMemory(startAddress, inst.size, oldProt, nullptr);
-		Utils::log("Replaced PIC thunk call for %s at %p with %s\n", name, followAddress, newInstr);
+		g_pLog->debug("Replaced PIC thunk call for %s at %p with %s\n", name, followAddress, newInstr);
 		return true;
 	}
 

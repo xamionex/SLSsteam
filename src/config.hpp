@@ -1,20 +1,21 @@
 #pragma once
 
-#include "utils.hpp"
+#include "log.hpp"
 
 #include "yaml-cpp/exceptions.h"
 #include "yaml-cpp/node/node.h"
 
 #include <cstdint>
 #include <cstdio>
-#include <map>
 #include <pthread.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class CConfig {
-	std::map<uint32_t, bool> _cachedAppIds;
-	std::map<uint32_t, bool> _cachedAddedAppIds;
+	std::unordered_map<uint32_t, bool> _cachedAppIds;
+	//TODO: Replace with unordered_set
+	std::unordered_map<uint32_t, bool> _cachedAddedAppIds;
 
 public:
 	//Using a map directly would be soooo much better, but for proper logging this is better
@@ -40,14 +41,7 @@ public:
 
 		if (!node[name])
 		{
-			char msg[255];
-			sprintf(msg, "Missing %s in configfile! Using default\n", name);
-
-			//TODO: Do this in a better way, cause this is pretty horrible :)
-			//MessageBox* box = new MessageBox("SLSsteam", msg);
-			//box->showAsync();
-
-			Utils::warn(msg);
+			g_pLog->warn("Missing %s in configfile! Using default", name);
 		}
 		else
 		{
@@ -57,7 +51,7 @@ public:
 			}
 			catch (YAML::BadConversion& er)
 			{
-				Utils::notify("Failed to parse value of {}! Using default\n", name);
+				g_pLog->notify("Failed to parse value of {}! Using default\n", name);
 			}
 		}
 
