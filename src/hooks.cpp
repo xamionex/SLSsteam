@@ -71,10 +71,7 @@ static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOw
 		//Seems to do nothing in particular, some dlc have this as 1 so I uncomented this for now. Might be free stuff?
 		//pOwnershipInfo->field27_0x36 = 1;
 
-		if(g_config.addAdditionalAppId(appId))
-		{
-			g_pLog->info("Force owned %u\n", appId);
-		}
+		g_config.addAdditionalAppId(appId);
 	}
 
 	//Doing that might be not worth it since this will most likely be easier to mantain
