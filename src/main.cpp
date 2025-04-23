@@ -87,7 +87,12 @@ void SLSsteam_init()
 		return;
 	}
 
-	g_pLog = std::unique_ptr<CLog>(CLog::getDefaultLog());
+	g_pLog = std::unique_ptr<CLog>(CLog::createDefaultLog());
+	if (!g_pLog)
+	{
+		return;
+	}
+
 	g_pLog->debug("SLSsteam loading in %s\n", proc.name);
 
 	cleanEnvVar("LD_AUDIT");
@@ -113,6 +118,7 @@ void SLSsteam_init()
 		g_pLog->notify("SLSsteam loaded");
 	}
 
+	//TODO: Add proper unloading of SLSsteam.so via dlclose when encountering error
 	return;
 }
 

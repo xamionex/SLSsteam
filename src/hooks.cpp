@@ -45,14 +45,15 @@ static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOw
 {
 	const bool ret = CheckAppOwnership(a0, appId, pOwnershipInfo);
 
+	//Do not log pOwnershipInfo because it gets deleted very quickly, so it's pretty much useless in the logs
+	g_pLog->once("CheckAppOwnership(%p, %u) -> %i\n", a0, appId, ret);
+
 	//Wait Until GetSubscribedApps gets called once to let Steam request and populate legit data first.
 	//Afterwards modifying should hopefully not affect false positives anymore
 	if (!applistRequested || g_config.shouldExcludeAppId(appId) || !pOwnershipInfo || !g_currentUserAccountId)
 	{
 		return ret;
 	}
-
-	g_pLog->once("CheckAppOwnership(%p, %u, %p) -> %i\n", a0, appId, pOwnershipInfo, ret);
 
 	if (g_config.isAddedAppId(appId) || (g_config.playNotOwnedGames && !pOwnershipInfo->purchased))
 	{
@@ -95,7 +96,7 @@ static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOw
 		return ret;
 
 	auto type = g_pClientApps->getAppType(appId);
-	if (type == EAppType::DLC) //Don't touch DLC here, otherwise downloads might break. Hopefully this won't decrease compatibility
+	if (type == APPTYPE_DLC) //Don't touch DLC here, otherwise downloads might break. Hopefully this won't decrease compatibility
 	{
 		return ret;
 	}
@@ -104,8 +105,8 @@ static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOw
 	{
 		switch(type)
 		{
-			case EAppType::Application:
-			case EAppType::Game:
+			case APPTYPE_APPLICATION:
+			case APPTYPE_GAME:
 				break;
 
 			default:
@@ -147,7 +148,7 @@ static bool hkClientAppManager_IsAppDlcInstalled(void* pClientAppManager, uint32
 
 	//Do not pretend things are installed while downloading Apps, otherwise downloads will break for some of them
 	auto state = g_pClientAppManager->getAppInstallState(appId);
-	if (state & EAppState::Downloading || state & EAppState::Installing)
+	if (state & APPSTATE_DOWNLOADING || state & APPSTATE_INSTALLING)
 	{
 		g_pLog->once("Skipping DlcId %u because AppId %u has AppState %i\n", dlcId, appId, state);
 		return ret;

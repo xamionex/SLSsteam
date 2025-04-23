@@ -3,39 +3,43 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <memory>
 #include <openssl/sha.h>
 #include <sstream>
 #include <unordered_set>
 
-enum LogLevel
+enum class LogLevel : unsigned int
 {
 	Once,
 	Debug,
 	Info,
-	Notify,
-	Warn
+	NotifyShort,
+	NotifyLong,
+	Warn,
+	None
 };
 
 class CLog
 {
 	std::ofstream ofstream;
-	std::unordered_set<const unsigned char*> msgCache;
+	std::unordered_set<char*> msgCache;
 
 	constexpr const char* logLvlToStr(LogLevel& lvl)
 	{
 		switch(lvl)
 		{
-			case Once:
+			case LogLevel::Once:
 				return "Once";
-			case Debug:
+			case LogLevel::Debug:
 				return "Debug";
-			case Info:
+			case LogLevel::Info:
 				return "Info";
-			case Notify:
+			case LogLevel::NotifyShort:
+			case LogLevel::NotifyLong:
 				return "Notify";
-			case Warn:
+			case LogLevel::Warn:
 				return "Warn";
 
 			//Shut gcc warning up
@@ -51,18 +55,22 @@ class CLog
 		char* formatted = reinterpret_cast<char*>(malloc(size));
 		snprintf(formatted, size, msg, args...);
 
+		bool freeFormatted = true;
 		if (lvl == LogLevel::Once)
 		{
-			unsigned char sha256[SHA256_DIGEST_LENGTH];
-			SHA256(reinterpret_cast<const unsigned char*>(formatted), size, sha256);
-
-			if (msgCache.contains(sha256))
+			//Can't use match functions from unordered_set because it's to unprecise.
+			//We could replace it with our own if we deem it necessary though
+			for(auto& msg : msgCache)
 			{
-				free(formatted);
-				return;
+				if (strcmp(msg, formatted) == 0)
+				{
+					free(formatted);
+					return;
+				}
 			}
 
-			msgCache.emplace(sha256);
+			msgCache.emplace(formatted);
+			freeFormatted = false;
 		}
 
 		std::stringstream notifySS;
@@ -70,8 +78,11 @@ class CLog
 		switch(lvl)
 		{
 			//TODO: Fix possible breakage when there's only one " in formatted
-			case LogLevel::Notify:
-				notifySS << "notify-send -u \"normal\" \"" << formatted << "\"";
+			case LogLevel::NotifyShort:
+				notifySS << "notify-send -t 10000 -u \"normal\" \"" << formatted << "\"";
+				break;
+			case LogLevel::NotifyLong:
+				notifySS << "notify-send -t 30000 -u \"normal\" \"" << formatted << "\"";
 				break;
 			case LogLevel::Warn:
 				notifySS << "notify-send -u \"critical\" \"" << formatted << "\"";
@@ -93,7 +104,10 @@ class CLog
 		}
 
 		ofstream.flush();
-		free(formatted);
+		if (freeFormatted)
+		{
+			free(formatted);
+		}
 	}
 
 public:
@@ -103,36 +117,42 @@ public:
 	~CLog();
 
 	template<typename ...Args>
-	void once(const char* msg, Args... args)
+	constexpr void once(const char* msg, Args... args)
 	{
 		__log(LogLevel::Once, msg, args...);
 	}
 
 	template<typename ...Args>
-	void debug(const char* msg, Args... args)
+	constexpr void debug(const char* msg, Args... args)
 	{
 		__log(LogLevel::Debug, msg, args...);
 	}
 
 	template<typename ...Args>
-	void info(const char* msg, Args... args)
+	constexpr void info(const char* msg, Args... args)
 	{
 		__log(LogLevel::Info, msg, args...);
 	}
 
 	template<typename ...Args>
-	void notify(const char* msg, Args... args)
+	constexpr void notify(const char* msg, Args... args)
 	{
-		__log(LogLevel::Notify, msg, args...);
+		__log(LogLevel::NotifyShort, msg, args...);
 	}
 
 	template<typename ...Args>
-	void warn(const char* msg, Args... args)
+	constexpr void notifyLong(const char* msg, Args... args)
+	{
+		__log(LogLevel::NotifyLong, msg, args...);
+	}
+
+	template<typename ...Args>
+	constexpr void warn(const char* msg, Args... args)
 	{
 		__log(LogLevel::Warn, msg, args...);
 	}
 
-	static CLog* getDefaultLog();
+	static CLog* createDefaultLog();
 };
 
 extern std::unique_ptr<CLog> g_pLog;

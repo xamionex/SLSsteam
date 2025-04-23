@@ -1,4 +1,5 @@
 #include "log.hpp"
+#include <cstdlib>
 #include <memory>
 
 CLog::CLog(const char* path) : path(path)
@@ -16,15 +17,25 @@ CLog::~CLog()
 	{
 		ofstream.close();
 	}
+
+	for(auto& msg : msgCache)
+	{
+		free(msg);
+	}
 }
 
-CLog* CLog::getDefaultLog()
+CLog* CLog::createDefaultLog()
 {
-	//TODO: Add error checking
-	std::stringstream ss;
-	ss << getenv("HOME") << "/.SLSsteam.log";
+	const char* home = getenv("HOME");
+	if (home)
+	{
+		std::stringstream ss;
+		ss << home << "/.SLSsteam.log";
 
-	return new CLog(ss.str().c_str());
+		return new CLog(ss.str().c_str());
+	}
+
+	return nullptr;
 }
 
 std::unique_ptr<CLog> g_pLog;
