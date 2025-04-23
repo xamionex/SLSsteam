@@ -11,6 +11,10 @@
 
 ## Downloading and Compiling
 
+It is recommended to grab a release from
+[Releases](https://github.com/AceSLS/SLSsteam/releases) instead!
+Afterwards skip straight to [Usage](#usage) or [Installation and Uninstallation](#installation-and-uninstallation)
+
 Make sure you have OpenSSL installed!
 Then run:
 
