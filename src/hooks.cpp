@@ -2,8 +2,8 @@
 #include "globals.hpp"
 #include "hooks.hpp"
 #include "log.hpp"
+#include "memhlp.hpp"
 #include "patterns.hpp"
-#include "utils.hpp"
 #include "vftableinfo.hpp"
 
 #include "libmem/libmem.h"
@@ -21,7 +21,6 @@
 #include <map>
 #include <strings.h>
 #include <unistd.h>
-#include <vector>
 
 static void(*LogSteamPipeCall)(const char*, const char*);
 
@@ -330,19 +329,19 @@ bool Hooks::setup()
 {
 	g_pLog->debug("Hooks::setup()\n");
 
-	lm_address_t logSteamPipeCall = Utils::searchSignature("LogSteamPipeCall", Patterns::LogSteamPipeCall, g_modSteamClient, Utils::SigFollowMode::Relative);
-	lm_address_t checkAppOwnership = Utils::searchSignature("CheckAppOwnership", Patterns::CheckAppOwnership, g_modSteamClient, Utils::SigFollowMode::Relative);
-	lm_address_t runningApp = Utils::searchSignature("RunningApp", Patterns::FamilyGroupRunningApp, g_modSteamClient, Utils::SigFollowMode::Relative);
-	lm_address_t stopPlayingBorrowedApp = Utils::searchSignature("StopPlayingBorrowedApp", Patterns::StopPlayingBorrowedApp, g_modSteamClient, Utils::SigFollowMode::PrologueUpwards);
+	lm_address_t logSteamPipeCall = MemHlp::searchSignature("LogSteamPipeCall", Patterns::LogSteamPipeCall, g_modSteamClient, MemHlp::SigFollowMode::Relative);
+	lm_address_t checkAppOwnership = MemHlp::searchSignature("CheckAppOwnership", Patterns::CheckAppOwnership, g_modSteamClient, MemHlp::SigFollowMode::Relative);
+	lm_address_t runningApp = MemHlp::searchSignature("RunningApp", Patterns::FamilyGroupRunningApp, g_modSteamClient, MemHlp::SigFollowMode::Relative);
+	lm_address_t stopPlayingBorrowedApp = MemHlp::searchSignature("StopPlayingBorrowedApp", Patterns::StopPlayingBorrowedApp, g_modSteamClient, MemHlp::SigFollowMode::PrologueUpwards);
 
-	lm_address_t clientApps_PipeLoop = Utils::searchSignature("IClientApps::PipeLoop", Patterns::IClientApps_PipeLoop, g_modSteamClient, Utils::SigFollowMode::Relative);
-	lm_address_t clientAppManager_PipeLoop = Utils::searchSignature("IClientAppManager::PipeLoop", Patterns::IClientAppManager_PipeLoop, g_modSteamClient, Utils::SigFollowMode::Relative);
-	lm_address_t clientUser_PipeLoop = Utils::searchSignature("IClientUser::PipeLoop", Patterns::IClientUser_PipeLoop, g_modSteamClient, Utils::SigFollowMode::Relative);
+	lm_address_t clientApps_PipeLoop = MemHlp::searchSignature("IClientApps::PipeLoop", Patterns::IClientApps_PipeLoop, g_modSteamClient, MemHlp::SigFollowMode::Relative);
+	lm_address_t clientAppManager_PipeLoop = MemHlp::searchSignature("IClientAppManager::PipeLoop", Patterns::IClientAppManager_PipeLoop, g_modSteamClient, MemHlp::SigFollowMode::Relative);
+	lm_address_t clientUser_PipeLoop = MemHlp::searchSignature("IClientUser::PipeLoop", Patterns::IClientUser_PipeLoop, g_modSteamClient, MemHlp::SigFollowMode::Relative);
 
 	//Searching this one via pattern because it's index is 100+, which breaks often
-	lm_address_t isSubscribedApp = Utils::searchSignature("IClientUser::BIsSubscribedApp", Patterns::IsSubscribedApp, g_modSteamClient, Utils::SigFollowMode::Relative);
+	lm_address_t isSubscribedApp = MemHlp::searchSignature("IClientUser::BIsSubscribedApp", Patterns::IsSubscribedApp, g_modSteamClient, MemHlp::SigFollowMode::Relative);
 	//Searching this one via pattern because it needs to be hooked as early as possible
-	lm_address_t getSubscribedApps = Utils::searchSignature("IClientUser::GetSubscribedApps", Patterns::GetSubscribedApps, g_modSteamClient, Utils::SigFollowMode::Relative);
+	lm_address_t getSubscribedApps = MemHlp::searchSignature("IClientUser::GetSubscribedApps", Patterns::GetSubscribedApps, g_modSteamClient, MemHlp::SigFollowMode::Relative);
 
 	//TODO: Improve logging further, in case user encounters error I can't replicate
 	if (!checkAddresses
@@ -363,10 +362,10 @@ bool Hooks::setup()
 	}
 
 	LM_HookCode(logSteamPipeCall, reinterpret_cast<lm_address_t>(hkLogSteamPipeCall), reinterpret_cast<lm_address_t*>(&LogSteamPipeCall));
-	Utils::fixPICThunkCall("LogSteamPipeCall", logSteamPipeCall, reinterpret_cast<lm_address_t>(LogSteamPipeCall));
+	MemHlp::fixPICThunkCall("LogSteamPipeCall", logSteamPipeCall, reinterpret_cast<lm_address_t>(LogSteamPipeCall));
 
 	LM_HookCode(checkAppOwnership, reinterpret_cast<lm_address_t>(hkCheckAppOwnership), reinterpret_cast<lm_address_t*>(&CheckAppOwnership));
-	Utils::fixPICThunkCall("CheckAppOwnership", checkAppOwnership, reinterpret_cast<lm_address_t>(CheckAppOwnership));
+	MemHlp::fixPICThunkCall("CheckAppOwnership", checkAppOwnership, reinterpret_cast<lm_address_t>(CheckAppOwnership));
 
 	if (g_config.disableFamilyLock)
 	{
@@ -380,7 +379,7 @@ bool Hooks::setup()
 	LM_HookCode(clientUser_PipeLoop, reinterpret_cast<lm_address_t>(hkClientUser_PipeLoop), reinterpret_cast<lm_address_t*>(&IClientUser_PipeLoop));
 	LM_HookCode(isSubscribedApp, reinterpret_cast<lm_address_t>(hkClientUser_BIsSubscribedApp), reinterpret_cast<lm_address_t*>(&IClientUser_BIsSubscribedApp));
 	LM_HookCode(getSubscribedApps, reinterpret_cast<lm_address_t>(hkClientUser_GetSubscribedApps), reinterpret_cast<lm_address_t*>(&IClientUser_GetSubscribedApps));
-	Utils::fixPICThunkCall("ISteamUser::GetSubscribedApps", getSubscribedApps, reinterpret_cast<lm_address_t>(IClientUser_GetSubscribedApps));
+	MemHlp::fixPICThunkCall("ISteamUser::GetSubscribedApps", getSubscribedApps, reinterpret_cast<lm_address_t>(IClientUser_GetSubscribedApps));
 
 	return true;
 }
