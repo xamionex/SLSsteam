@@ -4,24 +4,24 @@
 
 enum EAppType : unsigned int
 {
-	Invalid = 0,
-	Game = 1,
-	Application = 2,
-	Tool = 4,
-	Demo = 8,
-	Media_Deprecated = 16,
-	DLC = 32,
-	Guide = 64,
-	Driver = 128,
-	Config = 256,
-	Hardware = 512,
-	Franchise = 1024,
-	Video = 2048,
-	Plugin = 4096,
-	Music = 8192,
-	Series = 16384,
-	Shortcut = 1073741824, //Seems to not work
-	DepotOnly = 2147483648 //Placeholder, according to SteamAPI
+	APPTYPE_INVALID = 0,
+	APPTYPE_GAME = 0x1,
+	APPTYPE_APPLICATION = 0x2,
+	APPTYPE_TOOL = 0x4,
+	APPTYPE_DEMO = 0x8,
+	APPTYPE_MEDIA_DEPRECATED = 0x10,
+	APPTYPE_DLC = 0x20,
+	APPTYPE_GUIDE = 0x40,
+	APPTYPE_DRIVER = 0x80,
+	APPTYPE_CONFIG = 0x100,
+	APPTYPE_HARDWARE = 0x200,
+	APPTYPE_FRANCHISE = 0x400,
+	APPTYPE_VIDEO = 0x800,
+	APPTYPE_PLUGIN = 0x1000,
+	APPTYPE_MUSIC = 0x2000,
+	APPTYPE_SERIES = 0x4000,
+	APPTYPE_SHORTCUT = 0x40000000,
+	APPTYPE_DEPOT_ONLY = 0x80000000
 };
 
 class IClientApps

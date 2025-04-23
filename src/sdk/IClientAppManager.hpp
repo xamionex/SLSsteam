@@ -4,10 +4,10 @@
 
 enum EAppState : int
 {
-	None = 1, //Default ?
-	Downloading = 2,
-	Installed = 4,
-	Installing = 512
+	APPSTATE_NONE = 1, //Default ?
+	APPSTATE_DOWNLOADING = 2,
+	APPSTATE_INSTALLED = 4,
+	APPSTATE_INSTALLING = 512
 };
 
 class IClientAppManager
