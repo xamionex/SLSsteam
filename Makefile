@@ -9,6 +9,8 @@ deps := $(objs:%.o=%.d)
 CXXFLAGS := -O3 -flto=auto -fPIC -m32 -std=c++20 -Wall -Wextra -Wpedantic -lssl -lcrypto
 LDFLAGS := -shared
 
+DATE := $(shell date "+%Y%m%d%H%M%S")
+
 ifeq ($(shell echo $$NATIVE),1)
 	CXXFLAGS += -march=native
 endif
@@ -39,13 +41,12 @@ install:
 
 zips: bin/SLSsteam.so
 	@mkdir -p zips
-	7z a -mx9 -m9=lzma2 "zips/SLSsteam.7z" "bin/SLSsteam.so" "setup.sh"
-	7z a -mx9 -m9=lzma2 "zips/SLSsteam - Source.7z" "setup.sh" "include" "lib" "src" "Makefile"
-	7z a -mx9 -m9=lzma2 "zips/SLSsteam - Full.7z" "bin/SLSsteam.so" "setup.sh" "include" "lib" "src" "Makefile"
+	7z a -mx9 -m9=lzma2 "zips/SLSsteam $(DATE).7z" "bin/SLSsteam.so" "setup.sh"
 	#Maybe should be somewhere else, but who cares. Does anyone even use this besides me?
-	7z a -mx9 -m9=lzma2 "zips/SLSsteam - SLSConfig.7z" "$(HOME)/.config/SLSsteam/config.yaml"
+	7z a -mx9 -m9=lzma2 "zips/SLSsteam - SLSConfig $(DATE).7z" "$(HOME)/.config/SLSsteam/config.yaml"
 
+build: bin/SLSsteam.so
+rebuild: clean build
 all: clean build zips
-rebuild: clean bin/SLSsteam.so
 
 .PHONY: all build clean rebuild zips
