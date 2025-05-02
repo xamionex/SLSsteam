@@ -17,7 +17,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-const char* EXPECTED_STEAMCLIENT_HASH = "434140ff564b7fef458821235329b70bdfde8ddd1004c419400d8f1f50a97945";
+const char* EXPECTED_STEAMCLIENT_HASH = "b3f499f3a15aa10d4b6012ca98cef7806c600834112a1d7f73641313a050b3e5";
 
 bool cleanEnvVar(const char* varName)
 {
@@ -115,7 +115,7 @@ void SLSsteam_init()
 
 	if (Hooks::setup())
 	{
-		g_pLog->notify("SLSsteam loaded");
+		g_pLog->notify("Loaded successfully");
 	}
 
 	//TODO: Add proper unloading of SLSsteam.so via dlclose when encountering error
