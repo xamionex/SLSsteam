@@ -26,6 +26,7 @@ public:
 
 	std::string getDir();
 	std::string getPath();
+	bool createFile();
 	bool init();
 
 	bool loadSettings();

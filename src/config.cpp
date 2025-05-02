@@ -59,7 +59,7 @@ std::string CConfig::getPath()
 	return getDir().append("/config.yaml");
 }
 
-bool CConfig::init()
+bool CConfig::createFile()
 {
 	std::string path = getPath();
 	if (!std::filesystem::exists(path))
@@ -69,8 +69,7 @@ bool CConfig::init()
 		{
 			if (!std::filesystem::create_directories(dir))
 			{
-				g_pLog->debug("Unable to create config directory at %s!\n", dir.c_str());
-				loadSettings();
+				g_pLog->notify("Unable to create config directory at %s!\n", dir.c_str());
 				return false;
 			}
 
@@ -80,8 +79,7 @@ bool CConfig::init()
 		FILE* file = fopen(path.c_str(), "w");
 		if (!file)
 		{
-			g_pLog->debug("Unable to create config at %s!\n", path.c_str());
-			loadSettings();
+			g_pLog->notify("Unable to create config at %s!\n", path.c_str());
 			return false;
 		}
 
@@ -90,6 +88,12 @@ bool CConfig::init()
 		fclose(file);
 	}
 
+	return true;
+}
+
+bool CConfig::init()
+{
+	createFile();
 	loadSettings();
 	return true;
 }
@@ -103,12 +107,12 @@ bool CConfig::loadSettings()
 	}
 	catch (YAML::BadFile& bf)
 	{
-		g_pLog->notifyLong("Can not read config.yaml! %s\nUsing defaults\n", bf.msg.c_str());
+		g_pLog->notifyLong("Can not read config.yaml! %s\nUsing defaults", bf.msg.c_str());
 		node = YAML::Node(); //Create empty node and let defaults kick in
 	}
 	catch (YAML::ParserException& pe)
 	{
-		g_pLog->notifyLong("Error parsing config.yaml! %s\nUsing defaults\n", pe.msg.c_str());
+		g_pLog->notifyLong("Error parsing config.yaml! %s\nUsing defaults", pe.msg.c_str());
 		node = YAML::Node(); //Create empty node and let defaults kick in
 	}
 	
