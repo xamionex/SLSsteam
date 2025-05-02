@@ -6,8 +6,8 @@ srcs := $(shell find src/ -type f -iname "*.cpp")
 objs := $(srcs:src/%.cpp=obj/%.o)
 deps := $(objs:%.o=%.d)
 
-CXXFLAGS := -O3 -flto=auto -fPIC -m32 -std=c++20 -Wall -Wextra -Wpedantic -lssl -lcrypto
-LDFLAGS := -shared
+CXXFLAGS := -O3 -flto=auto -fPIC -m32 -std=c++20 -Wall -Wextra -Wpedantic
+LDFLAGS := -shared -lssl -lcrypto
 
 DATE := $(shell date "+%Y%m%d%H%M%S")
 
@@ -26,7 +26,6 @@ endif
 bin/SLSsteam.so: $(objs) $(libs)
 	@mkdir -p bin
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $^ -o bin/SLSsteam.so
-	strip -s bin/SLSsteam.so
 
 -include $(deps)
 obj/%.o : src/%.cpp
@@ -39,7 +38,7 @@ clean:
 install:
 	sh setup.sh
 
-zips: bin/SLSsteam.so
+zips: rebuild
 	@mkdir -p zips
 	7z a -mx9 -m9=lzma2 "zips/SLSsteam $(DATE).7z" "bin/SLSsteam.so" "setup.sh"
 	#Maybe should be somewhere else, but who cares. Does anyone even use this besides me?
