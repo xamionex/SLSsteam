@@ -49,6 +49,7 @@ class CLog
 	}
 
 	template<typename ...Args>
+	[[gnu::hot]]
 	void __log(LogLevel lvl, const char* msg, Args... args)
 	{
 		size_t size = snprintf(nullptr, 0, msg, args...) + 1; //Allocate one more byte for zero termination
@@ -79,13 +80,13 @@ class CLog
 		{
 			//TODO: Fix possible breakage when there's only one " in formatted
 			case LogLevel::NotifyShort:
-				notifySS << "notify-send -t 10000 -u \"normal\" \"" << formatted << "\"";
+				notifySS << "notify-send -t 10000 -u \"normal\" \"SLSsteam\" \"" << formatted << "\"";
 				break;
 			case LogLevel::NotifyLong:
-				notifySS << "notify-send -t 30000 -u \"normal\" \"" << formatted << "\"";
+				notifySS << "notify-send -t 30000 -u \"normal\" \"SLSsteam\" \"" << formatted << "\"";
 				break;
 			case LogLevel::Warn:
-				notifySS << "notify-send -u \"critical\" \"" << formatted << "\"";
+				notifySS << "notify-send -u \"critical\" \"SLSsteam\" \"" << formatted << "\"";
 				break;
 
 			default:
