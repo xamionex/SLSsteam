@@ -49,7 +49,7 @@ static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOw
 
 	//Wait Until GetSubscribedApps gets called once to let Steam request and populate legit data first.
 	//Afterwards modifying should hopefully not affect false positives anymore
-	if (!applistRequested || g_config.shouldExcludeAppId(appId) || !pOwnershipInfo || !g_currentUserAccountId)
+	if (!applistRequested || g_config.shouldExcludeAppId(appId) || !pOwnershipInfo || !g_pCurrentSteamId)
 	{
 		return ret;
 	}
@@ -57,7 +57,7 @@ static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOw
 	if (g_config.isAddedAppId(appId) || (g_config.playNotOwnedGames && !pOwnershipInfo->purchased))
 	{
 		//Changing the purchased field is enough, but just for nicety in the Steamclient UI we change the owner too
-		pOwnershipInfo->ownerSteamId = g_currentUserAccountId;
+		pOwnershipInfo->ownerSteamId = g_pCurrentSteamId->steamId;
 		pOwnershipInfo->purchased = true;
 
 		//Unnessecary but whatever
@@ -241,18 +241,15 @@ static void hkClientApps_PipeLoop(void* pClientApps, void* a1, void* a2, void* a
 static lm_vmt_t IClientUser_vmt;
 
 [[gnu::hot]]
-static CSteamId* hkClientUser_GetSteamId(void* pClientUser, void* a1)
+static void hkClientUser_GetSteamId(void* pClientUser, void* a1)
 {
 	const static auto o = reinterpret_cast<CSteamId*(*)(void*, void*)>(LM_VmtGetOriginal(&IClientUser_vmt, VFTIndexes::IClientUser::GetSteamID));
-	CSteamId* id = o(pClientUser, a1);
+	g_pLog->once("Grabbing SteamId\n");
 
-	if (!g_currentUserAccountId && id && id->steamId)
-	{
-		g_currentUserAccountId = id->steamId;
-		g_pLog->debug("AcccountId grabbed!\n");
-	}
-
-	return id;
+	//Don't do anything after this, the stack is very sensitive since it's not using a default ABI
+	//Also no return in our definition since it actually returns it's value in ebx
+	//TODO: Replace with proper naked function after resolving crash from LM_Assemble
+	g_pCurrentSteamId = o(pClientUser, a1);
 }
 
 static bool (*IClientUser_BIsSubscribedApp)(void*, uint32_t);
