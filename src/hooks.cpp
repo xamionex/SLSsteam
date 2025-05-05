@@ -22,12 +22,17 @@
 #include <strings.h>
 #include <unistd.h>
 
-static void(*LogSteamPipeCall)(const char*, const char*);
+Hooks::LogSteamPipeCall_t Hooks::LogSteamPipeCall;
+Hooks::CheckAppOwnership_t Hooks::CheckAppOwnership;
+Hooks::IClientAppManager_PipeLoop_t Hooks::IClientAppManager_PipeLoop;
+Hooks::IClientApps_PipeLoop_t Hooks::IClientApps_PipeLoop;
+Hooks::IClientUser_BIsSubscribedApp_t Hooks::IClientUser_BIsSubscribedApp;
+Hooks::IClientUser_GetSubscribedApps_t Hooks::IClientUser_GetSubscribedApps;
+Hooks::IClientUser_PipeLoop_t Hooks::IClientUser_PipeLoop;
 
-[[gnu::hot]]
 static void hkLogSteamPipeCall(const char* iface, const char* fn)
 {
-	LogSteamPipeCall(iface, fn);
+	Hooks::LogSteamPipeCall(iface, fn);
 
 	if (g_config.extendedLogging)
 	{
@@ -35,14 +40,13 @@ static void hkLogSteamPipeCall(const char* iface, const char* fn)
 	}
 }
 
-static bool(*CheckAppOwnership)(void*, uint32_t, void*);
 static bool applistRequested = false;
 static auto appIdOwnerOverride = std::map<uint32_t, int>();
 
 [[gnu::hot]]
 static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOwnershipInfo)
 {
-	const bool ret = CheckAppOwnership(a0, appId, pOwnershipInfo);
+	const bool ret = Hooks::CheckAppOwnership(a0, appId, pOwnershipInfo);
 
 	//Do not log pOwnershipInfo because it gets deleted very quickly, so it's pretty much useless in the logs
 	g_pLog->once("CheckAppOwnership(%p, %u) -> %i\n", a0, appId, ret);
@@ -168,6 +172,7 @@ static bool hkClientAppManager_BIsDlcEnabled(void* pClientAppManager, uint32_t a
 	const bool ret = o(pClientAppManager, appId, dlcId, a3);
 	g_pLog->once("IClientAppManager::BIsDlcEnabled(%p, %u, %u, %p) -> %i\n", pClientAppManager, appId, dlcId, a3, ret);
 
+	//TODO: Add check for legit ownership to allow toggle on/off
 	if (g_config.shouldExcludeAppId(dlcId))
 	{
 		return ret;
@@ -175,8 +180,6 @@ static bool hkClientAppManager_BIsDlcEnabled(void* pClientAppManager, uint32_t a
 
 	return true;
 }
-
-static void(*IClientAppManager_PipeLoop)(void*, void*, void*, void*);
 
 [[gnu::hot]]
 static void hkClientAppManager_PipeLoop(void* pClientAppManager, void* a1, void* a2, void* a3)
@@ -195,7 +198,7 @@ static void hkClientAppManager_PipeLoop(void* pClientAppManager, void* a1, void*
 		hooked = true;
 	}
 
-	IClientAppManager_PipeLoop(pClientAppManager, a1, a2, a3);
+	Hooks::IClientAppManager_PipeLoop(pClientAppManager, a1, a2, a3);
 }
 
 static lm_vmt_t IClientApps_vmt;
@@ -219,8 +222,6 @@ static bool hkGetDLCDataByIndex(void* pClientApps, uint32_t appId, int dlcIndex,
 	return ret;
 }
 
-static void(*IClientApps_PipeLoop)(void*, void*, void*, void*);
-
 [[gnu::hot]]
 static void hkClientApps_PipeLoop(void* pClientApps, void* a1, void* a2, void* a3)
 {
@@ -235,7 +236,8 @@ static void hkClientApps_PipeLoop(void* pClientApps, void* a1, void* a2, void* a
 		g_pLog->debug("IClientApps->vft at %p\n", IClientApps_vmt.vtable);
 		hooked = true;
 	}
-	return IClientApps_PipeLoop(pClientApps, a1, a2, a3);
+
+	return Hooks::IClientApps_PipeLoop(pClientApps, a1, a2, a3);
 }
 
 static lm_vmt_t IClientUser_vmt;
@@ -243,20 +245,19 @@ static lm_vmt_t IClientUser_vmt;
 [[gnu::hot]]
 static void hkClientUser_GetSteamId(void* pClientUser, void* a1)
 {
-	const static auto o = reinterpret_cast<CSteamId*(*)(void*, void*)>(LM_VmtGetOriginal(&IClientUser_vmt, VFTIndexes::IClientUser::GetSteamID));
-	g_pLog->once("Grabbing SteamId\n");
+	const static auto o = reinterpret_cast<void(*)(void*, void*)>(LM_VmtGetOriginal(&IClientUser_vmt, VFTIndexes::IClientUser::GetSteamID));
+	o(pClientUser, a1);
 
-	//Don't do anything after this, the stack is very sensitive since it's not using a default ABI
-	//Also no return in our definition since it actually returns it's value in ebx
-	//TODO: Replace with proper naked function after resolving crash from LM_Assemble
-	g_pCurrentSteamId = o(pClientUser, a1);
+	g_pCurrentSteamId = reinterpret_cast<CSteamId*>(pClientUser);
+	if (g_pCurrentSteamId && g_pCurrentSteamId->steamId)
+	{
+		g_pLog->once("Grabbed SteamId\n");
+	}
 }
-
-static bool (*IClientUser_BIsSubscribedApp)(void*, uint32_t);
 
 static bool hkClientUser_BIsSubscribedApp(void* pClientUser, uint32_t appId)
 {
-	const bool ret = IClientUser_BIsSubscribedApp(pClientUser, appId);
+	const bool ret = Hooks::IClientUser_BIsSubscribedApp(pClientUser, appId);
 
 	g_pLog->once("IClientUser::BIsSubscribedApp(%p, %u) -> %i\n", pClientUser, appId, ret);
 
@@ -268,11 +269,9 @@ static bool hkClientUser_BIsSubscribedApp(void* pClientUser, uint32_t appId)
 	return true;
 }
 
-static uint32_t (*IClientUser_GetSubscribedApps)(void*, uint32_t*, size_t, bool);
-
 static uint32_t hkClientUser_GetSubscribedApps(void* pClientUser, uint32_t* pAppList, size_t size, bool a3)
 {
-	uint32_t count = IClientUser_GetSubscribedApps(pClientUser, pAppList, size, a3);
+	uint32_t count = Hooks::IClientUser_GetSubscribedApps(pClientUser, pAppList, size, a3);
 	g_pLog->once("IClientUser::GetSubscribedApps(%p, %p, %i, %i) -> %i\n", pClientUser, pAppList, size, a3, count);
 
 	//Valve calls this function twice, once with size of 0 then again
@@ -290,8 +289,6 @@ static uint32_t hkClientUser_GetSubscribedApps(void* pClientUser, uint32_t* pApp
 	return count;
 }
 
-static void(*IClientUser_PipeLoop)(void*, void*, void*, void*);
-
 [[gnu::hot]]
 static void hkClientUser_PipeLoop(void* pClientUser, void* a1, void* a2, void* a3)
 {
@@ -302,14 +299,13 @@ static void hkClientUser_PipeLoop(void* pClientUser, void* a1, void* a2, void* a
 		g_pSteamUser = reinterpret_cast<IClientUser*>(pClientUser);
 
 		LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientUser), &IClientUser_vmt);
-
-		LM_VmtHook(&IClientUser_vmt, VFTIndexes::IClientUser::GetSteamID, reinterpret_cast<lm_address_t>(&hkClientUser_GetSteamId));
+		LM_VmtHook(&IClientUser_vmt, VFTIndexes::IClientUser::GetSteamID, reinterpret_cast<lm_address_t>(hkClientUser_GetSteamId));
 
 		g_pLog->debug("IClientUser->vft at %p\n", IClientUser_vmt.vtable);
 		hooked = true;
 	}
 
-	IClientUser_PipeLoop(pClientUser, a1, a2, a3);
+	Hooks::IClientUser_PipeLoop(pClientUser, a1, a2, a3);
 }
 
 static void patchRetn(lm_address_t address)
@@ -326,6 +322,7 @@ bool Hooks::setup()
 {
 	g_pLog->debug("Hooks::setup()\n");
 
+	//TODO: Create HookDef class that automatically searches the signature, hooks, fixes PIC thunks and also logs all of that 
 	lm_address_t logSteamPipeCall = MemHlp::searchSignature("LogSteamPipeCall", Patterns::LogSteamPipeCall, g_modSteamClient, MemHlp::SigFollowMode::Relative);
 	lm_address_t checkAppOwnership = MemHlp::searchSignature("CheckAppOwnership", Patterns::CheckAppOwnership, g_modSteamClient, MemHlp::SigFollowMode::Relative);
 	lm_address_t runningApp = MemHlp::searchSignature("RunningApp", Patterns::FamilyGroupRunningApp, g_modSteamClient, MemHlp::SigFollowMode::Relative);
