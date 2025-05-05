@@ -3,4 +3,4 @@
 
 lm_module_t g_modSteamClient;
 
-CSteamId* g_pCurrentSteamId;
+uint32_t g_currentSteamId;

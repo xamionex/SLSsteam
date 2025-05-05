@@ -53,7 +53,7 @@ static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOw
 
 	//Wait Until GetSubscribedApps gets called once to let Steam request and populate legit data first.
 	//Afterwards modifying should hopefully not affect false positives anymore
-	if (!applistRequested || g_config.shouldExcludeAppId(appId) || !pOwnershipInfo || !g_pCurrentSteamId)
+	if (!applistRequested || g_config.shouldExcludeAppId(appId) || !pOwnershipInfo || !g_currentSteamId)
 	{
 		return ret;
 	}
@@ -61,7 +61,7 @@ static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOw
 	if (g_config.isAddedAppId(appId) || (g_config.playNotOwnedGames && !pOwnershipInfo->purchased))
 	{
 		//Changing the purchased field is enough, but just for nicety in the Steamclient UI we change the owner too
-		pOwnershipInfo->ownerSteamId = g_pCurrentSteamId->steamId;
+		pOwnershipInfo->ownerSteamId = g_currentSteamId;
 		pOwnershipInfo->purchased = true;
 
 		//Unnessecary but whatever
@@ -248,9 +248,10 @@ static void hkClientUser_GetSteamId(void* pClientUser, void* a1)
 	const static auto o = reinterpret_cast<void(*)(void*, void*)>(LM_VmtGetOriginal(&IClientUser_vmt, VFTIndexes::IClientUser::GetSteamID));
 	o(pClientUser, a1);
 
-	g_pCurrentSteamId = reinterpret_cast<CSteamId*>(pClientUser);
-	if (g_pCurrentSteamId && g_pCurrentSteamId->steamId)
+	CSteamId* id = reinterpret_cast<CSteamId*>(pClientUser);
+	if (id && id->steamId && !g_currentSteamId)
 	{
+		g_currentSteamId = id->steamId;
 		g_pLog->once("Grabbed SteamId\n");
 	}
 }
