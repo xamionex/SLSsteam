@@ -1,6 +1,4 @@
 #pragma once
-#include "sdk/CSteamID.hpp"
-
 #include "libmem/libmem.h"
 
 #include <cstdint>
