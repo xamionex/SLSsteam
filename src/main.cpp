@@ -44,7 +44,7 @@ bool cleanEnvVar(const char* varName)
 		newEnv.append(split);
 	}
 
-	setenv(varName, newEnv.c_str(), 1);
+	setenv(varName, newEnv.c_str(), true);
 	//g_pLog->debug("Set %s to %s\n", varName, newEnv.c_str());
 
 	return true;
@@ -73,7 +73,7 @@ bool verifySteamClientHash()
 	}
 }
 
-void SLSsteam_init()
+void setup()
 {
 	lm_process_t proc {};
 	if (!LM_GetProcess(&proc))
@@ -99,7 +99,10 @@ void SLSsteam_init()
 	cleanEnvVar("LD_PRELOAD");
 
 	g_config.init();
+}
 
+void load()
+{
 	if (!verifySteamClientHash())
 	{
 		if (g_config.safeMode)
@@ -117,9 +120,6 @@ void SLSsteam_init()
 	{
 		g_pLog->notify("Loaded successfully");
 	}
-
-	//TODO: Add proper unloading of SLSsteam.so via dlclose when encountering error
-	return;
 }
 
 unsigned int la_version(unsigned int)
@@ -131,8 +131,13 @@ unsigned int la_objopen(struct link_map *map, __attribute__((unused)) Lmid_t lmi
 {
 	if (std::string(map->l_name).ends_with("/steamclient.so"))
 	{
-		SLSsteam_init();
+		load();
 	}
 
 	return 0;
+}
+
+void la_preinit(__attribute__((unused)) uintptr_t *cookie)
+{
+	setup();
 }
