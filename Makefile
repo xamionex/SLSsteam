@@ -1,13 +1,20 @@
 #Thanks to https://stackoverflow.com/questions/52034997/how-to-make-makefile-recompile-when-a-header-file-is-changed for the -MMD & -MP flags
 #Without them headers wouldn't trigger recompilation
 
+#Force g++ cause clang crashes on some hooks
+CXX := g++
+
 libs := $(wildcard lib/*.a)
 srcs := $(shell find src/ -type f -iname "*.cpp")
 objs := $(srcs:src/%.cpp=obj/%.o)
 deps := $(objs:%.o=%.d)
 
 CXXFLAGS := -O3 -flto=auto -fPIC -m32 -std=c++20 -Wall -Wextra -Wpedantic
-LDFLAGS := -shared -lssl -lcrypto
+#Need static-listdc++ because steam seems to mess with LD_LIBRARY_PATH
+LDFLAGS := -shared -static-libstdc++
+
+#OpenSSL
+LDFLAGS += -lssl -lcrypto
 
 DATE := $(shell date "+%Y%m%d%H%M%S")
 
