@@ -19,20 +19,115 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <strings.h>
 #include <unistd.h>
 
-Hooks::LogSteamPipeCall_t Hooks::LogSteamPipeCall;
-Hooks::CheckAppOwnership_t Hooks::CheckAppOwnership;
-Hooks::IClientAppManager_PipeLoop_t Hooks::IClientAppManager_PipeLoop;
-Hooks::IClientApps_PipeLoop_t Hooks::IClientApps_PipeLoop;
-Hooks::IClientUser_BIsSubscribedApp_t Hooks::IClientUser_BIsSubscribedApp;
-Hooks::IClientUser_GetSubscribedApps_t Hooks::IClientUser_GetSubscribedApps;
-Hooks::IClientUser_PipeLoop_t Hooks::IClientUser_PipeLoop;
+template<typename T>
+Hook<T>::Hook(const char* name)
+{
+	this->name = std::string(name);
+}
 
+template<typename T> DetourHook<T>::DetourHook(const char* name) : Hook<T>::Hook(name)
+{
+	this->size = 0;
+}
+template<typename T> VFTHook<T>::VFTHook(const char* name) : Hook<T>::Hook(name)
+{
+	this->hooked = false;
+}
+
+template<typename T>
+bool DetourHook<T>::setup(const char* pattern, const MemHlp::SigFollowMode followMode, T hookFn)
+{
+	lm_address_t oFn = MemHlp::searchSignature(this->name.c_str(), pattern, g_modSteamClient, followMode);
+	if (oFn == LM_ADDRESS_BAD)
+	{
+		return false;
+	}
+
+	this->originalFn.address = oFn;
+	this->hookFn.fn = hookFn;
+
+	return true;
+}
+
+template<typename T>
+void DetourHook<T>::place()
+{
+	this->size = LM_HookCode(this->originalFn.address, this->hookFn.address, &this->tramp.address);
+	MemHlp::fixPICThunkCall(this->name.c_str(), this->originalFn.address, this->tramp.address);
+
+	g_pLog->debug
+	(
+		"Detour hooked %s (%p) with hook at %p and tramp at %p\n",
+		this->name.c_str(),
+		this->originalFn.address,
+		this->hookFn.address,
+		this->tramp.address
+	);
+}
+
+template<typename T>
+void DetourHook<T>::remove()
+{
+	if (!this->size)
+	{
+		return;
+	}
+
+	LM_UnhookCode(this->originalFn.address, this->tramp.address, this->size);
+	this->size = 0;
+
+	g_pLog->debug("Unhooked %s\n", this->name.c_str());
+}
+
+template<typename T>
+void VFTHook<T>::place()
+{
+	LM_VmtHook(this->vft.get(), this->index, this->hookFn.address);
+	this->hooked = true;
+
+	g_pLog->debug
+	(
+		"VFT hooked %s (%p) with hook at %p\n",
+		this->name.c_str(),
+		this->originalFn.address,
+		this->hookFn.address
+	);
+}
+
+template<typename T>
+void VFTHook<T>::remove()
+{
+	//No clue how libmem reacts when unhooking a non existent hook
+	//so we do this
+	if (!this->hooked)
+	{
+		return;
+	}
+
+	LM_VmtUnhook(this->vft.get(), this->index);
+	this->hooked = false;
+
+	g_pLog->debug("Unhooked %s!\n", this->name.c_str());
+}
+
+template<typename T>
+void VFTHook<T>::setup(std::shared_ptr<lm_vmt_t> vft, unsigned int index, T hookFn)
+{
+	this->vft = vft;
+	this->index = index;
+
+	this->originalFn.address = LM_VmtGetOriginal(this->vft.get(), this->index);
+	this->hookFn.fn = hookFn;
+}
+
+__attribute__((hot))
 static void hkLogSteamPipeCall(const char* iface, const char* fn)
 {
-	Hooks::LogSteamPipeCall(iface, fn);
+	Hooks::LogSteamPipeCall.tramp.fn(iface, fn);
 
 	if (g_config.extendedLogging)
 	{
@@ -43,10 +138,10 @@ static void hkLogSteamPipeCall(const char* iface, const char* fn)
 static bool applistRequested = false;
 static auto appIdOwnerOverride = std::map<uint32_t, int>();
 
-[[gnu::hot]]
+__attribute__((hot))
 static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOwnershipInfo)
 {
-	const bool ret = Hooks::CheckAppOwnership(a0, appId, pOwnershipInfo);
+	const bool ret = Hooks::CheckAppOwnership.tramp.fn(a0, appId, pOwnershipInfo);
 
 	//Do not log pOwnershipInfo because it gets deleted very quickly, so it's pretty much useless in the logs
 	g_pLog->once("CheckAppOwnership(%p, %u) -> %i\n", a0, appId, ret);
@@ -117,15 +212,8 @@ static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOw
 	return true;
 }
 
-static lm_vmt_t IClientAppManager_vmt;
-
 static void* hkClientAppManager_LaunchApp(void* pClientAppManager, uint32_t* pAppId, void* a2, void* a3, void* a4)
 {
-	const static auto o = reinterpret_cast<void*(*)(void*, uint32_t*, void*, void*, void*)>
-	(
-		LM_VmtGetOriginal(&IClientAppManager_vmt, VFTIndexes::IClientAppManager::LaunchApp)
-	);
-
 	if (pAppId)
 	{
 		g_pLog->once("IClientAppManager::LaunchApp(%p, %u, %p, %p, %p)\n", pClientAppManager, *pAppId, a2, a3, a4);
@@ -133,17 +221,12 @@ static void* hkClientAppManager_LaunchApp(void* pClientAppManager, uint32_t* pAp
 	}
 
 	//Do not do anything in post! Otherwise App launching will break
-	return o(pClientAppManager, pAppId, a2, a3, a4);
+	return Hooks::IClientAppManager_LaunchApp.originalFn.fn(pClientAppManager, pAppId, a2, a3, a4);
 }
 
 static bool hkClientAppManager_IsAppDlcInstalled(void* pClientAppManager, uint32_t appId, uint32_t dlcId)
 {
-	const static auto o = reinterpret_cast<bool(*)(void*, uint32_t, uint32_t)>
-	(
-		LM_VmtGetOriginal(&IClientAppManager_vmt, VFTIndexes::IClientAppManager::IsAppDlcInstalled)
-	);
-
-	const bool ret = o(pClientAppManager, appId, dlcId);
+	const bool ret = Hooks::IClientAppManager_IsAppDlcInstalled.originalFn.fn(pClientAppManager, appId, dlcId);
 	g_pLog->once("IClientAppManager::IsAppDlcInstalled(%p, %u, %u) -> %i\n", pClientAppManager, appId, dlcId, ret);
 
 	//Do not pretend things are installed while downloading Apps, otherwise downloads will break for some of them
@@ -164,12 +247,7 @@ static bool hkClientAppManager_IsAppDlcInstalled(void* pClientAppManager, uint32
 
 static bool hkClientAppManager_BIsDlcEnabled(void* pClientAppManager, uint32_t appId, uint32_t dlcId, void* a3)
 {
-	const static auto o = reinterpret_cast<bool(*)(void*, uint32_t, uint32_t, void*)>
-	(
-		LM_VmtGetOriginal(&IClientAppManager_vmt, VFTIndexes::IClientAppManager::BIsDlcEnabled)
-	);
-
-	const bool ret = o(pClientAppManager, appId, dlcId, a3);
+	const bool ret = Hooks::IClientAppManager_BIsDlcEnabled.originalFn.fn(pClientAppManager, appId, dlcId, a3);
 	g_pLog->once("IClientAppManager::BIsDlcEnabled(%p, %u, %u, %p) -> %i\n", pClientAppManager, appId, dlcId, a3, ret);
 
 	//TODO: Add check for legit ownership to allow toggle on/off
@@ -181,7 +259,7 @@ static bool hkClientAppManager_BIsDlcEnabled(void* pClientAppManager, uint32_t a
 	return true;
 }
 
-[[gnu::hot]]
+__attribute__((hot))
 static void hkClientAppManager_PipeLoop(void* pClientAppManager, void* a1, void* a2, void* a3)
 {
 	static bool hooked = false;
@@ -189,29 +267,28 @@ static void hkClientAppManager_PipeLoop(void* pClientAppManager, void* a1, void*
 	{
 		g_pClientAppManager = reinterpret_cast<IClientAppManager*>(pClientAppManager);
 
-		LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientAppManager), &IClientAppManager_vmt);
+		std::shared_ptr<lm_vmt_t> vft = std::make_shared<lm_vmt_t>();
+		LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientAppManager), vft.get());
 
-		LM_VmtHook(&IClientAppManager_vmt, VFTIndexes::IClientAppManager::LaunchApp, reinterpret_cast<lm_address_t>(&hkClientAppManager_LaunchApp));
-		LM_VmtHook(&IClientAppManager_vmt, VFTIndexes::IClientAppManager::IsAppDlcInstalled, reinterpret_cast<lm_address_t>(&hkClientAppManager_IsAppDlcInstalled));
-		LM_VmtHook(&IClientAppManager_vmt, VFTIndexes::IClientAppManager::BIsDlcEnabled, reinterpret_cast<lm_address_t>(&hkClientAppManager_BIsDlcEnabled));
-		g_pLog->debug("IClientAppManager->vft at %p\n", IClientAppManager_vmt.vtable);
+		Hooks::IClientAppManager_BIsDlcEnabled.setup(vft, VFTIndexes::IClientAppManager::BIsDlcEnabled, hkClientAppManager_BIsDlcEnabled);
+		Hooks::IClientAppManager_LaunchApp.setup(vft, VFTIndexes::IClientAppManager::LaunchApp, hkClientAppManager_LaunchApp);
+		Hooks::IClientAppManager_IsAppDlcInstalled.setup(vft, VFTIndexes::IClientAppManager::IsAppDlcInstalled, hkClientAppManager_IsAppDlcInstalled);
+
+		Hooks::IClientAppManager_BIsDlcEnabled.place();
+		Hooks::IClientAppManager_LaunchApp.place();
+		Hooks::IClientAppManager_IsAppDlcInstalled.place();
+
+		g_pLog->debug("IClientAppManager->vft at %p\n", vft->vtable);
 		hooked = true;
 	}
 
-	Hooks::IClientAppManager_PipeLoop(pClientAppManager, a1, a2, a3);
+	Hooks::IClientAppManager_PipeLoop.tramp.fn(pClientAppManager, a1, a2, a3);
 }
-
-static lm_vmt_t IClientApps_vmt;
 
 //Unsure if pDlcId is really what I think it is as I don't have anymore games installed to test it (sorry, needed the disk space lmao)
 static bool hkGetDLCDataByIndex(void* pClientApps, uint32_t appId, int dlcIndex, uint32_t* pDlcId, bool* pIsAvailable, const char* dlcName, size_t dlcNameLen)
 {
-	const static auto o = reinterpret_cast<bool(*)(void*, uint32_t, int, void*, bool*, const char*, size_t)>
-	(
-		LM_VmtGetOriginal(&IClientApps_vmt, VFTIndexes::IClientApps::GetDLCDataByIndex)
-	);
-
-	const bool ret = o(pClientApps, appId, dlcIndex, pDlcId, pIsAvailable, dlcName, dlcNameLen);
+	const bool ret = Hooks::IClientApps_GetDLCDataByIndex.originalFn.fn(pClientApps, appId, dlcIndex, pDlcId, pIsAvailable, dlcName, dlcNameLen);
 	g_pLog->once("IClientApps::GetDLCDataByIndex(%p, %u, %i, %p, %p, %s, %i) -> %i\n", pClientApps, appId, dlcIndex, pDlcId, pIsAvailable, dlcName, dlcNameLen, ret);
 
 	if (pIsAvailable && pDlcId && !g_config.shouldExcludeAppId(*pDlcId))
@@ -222,7 +299,7 @@ static bool hkGetDLCDataByIndex(void* pClientApps, uint32_t appId, int dlcIndex,
 	return ret;
 }
 
-[[gnu::hot]]
+__attribute__((hot))
 static void hkClientApps_PipeLoop(void* pClientApps, void* a1, void* a2, void* a3)
 {
 	static bool hooked = false;
@@ -230,23 +307,24 @@ static void hkClientApps_PipeLoop(void* pClientApps, void* a1, void* a2, void* a
 	{
 		g_pClientApps = reinterpret_cast<IClientApps*>(pClientApps);
 
-		LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientApps), &IClientApps_vmt);
+		std::shared_ptr<lm_vmt_t> vft = std::make_shared<lm_vmt_t>();
+		LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientApps), vft.get());
 
-		LM_VmtHook(&IClientApps_vmt, VFTIndexes::IClientApps::GetDLCDataByIndex, reinterpret_cast<lm_address_t>(&hkGetDLCDataByIndex));
-		g_pLog->debug("IClientApps->vft at %p\n", IClientApps_vmt.vtable);
+		Hooks::IClientApps_GetDLCDataByIndex.setup(vft, VFTIndexes::IClientApps::GetDLCDataByIndex, hkGetDLCDataByIndex);
+		Hooks::IClientApps_GetDLCDataByIndex.place();
+
+		g_pLog->debug("IClientApps->vft at %p\n", vft->vtable);
 		hooked = true;
 	}
 
-	return Hooks::IClientApps_PipeLoop(pClientApps, a1, a2, a3);
+	return Hooks::IClientApps_PipeLoop.tramp.fn(pClientApps, a1, a2, a3);
 }
 
-static lm_vmt_t IClientUser_vmt;
-
-[[gnu::hot]]
+//Optimization causes a crash to happen, so we don't
+__attribute__((optimize(0), stdcall, hot))
 static void hkClientUser_GetSteamId(void* pClientUser, void* a1)
 {
-	const static auto o = reinterpret_cast<void(*)(void*, void*)>(LM_VmtGetOriginal(&IClientUser_vmt, VFTIndexes::IClientUser::GetSteamID));
-	o(pClientUser, a1);
+	Hooks::IClientUser_GetSteamId.originalFn.fn(pClientUser, a1);
 
 	CSteamId* id = reinterpret_cast<CSteamId*>(pClientUser);
 	if (id && id->steamId && !g_currentSteamId)
@@ -258,7 +336,7 @@ static void hkClientUser_GetSteamId(void* pClientUser, void* a1)
 
 static bool hkClientUser_BIsSubscribedApp(void* pClientUser, uint32_t appId)
 {
-	const bool ret = Hooks::IClientUser_BIsSubscribedApp(pClientUser, appId);
+	const bool ret = Hooks::IClientUser_BIsSubscribedApp.tramp.fn(pClientUser, appId);
 
 	g_pLog->once("IClientUser::BIsSubscribedApp(%p, %u) -> %i\n", pClientUser, appId, ret);
 
@@ -272,7 +350,7 @@ static bool hkClientUser_BIsSubscribedApp(void* pClientUser, uint32_t appId)
 
 static uint32_t hkClientUser_GetSubscribedApps(void* pClientUser, uint32_t* pAppList, size_t size, bool a3)
 {
-	uint32_t count = Hooks::IClientUser_GetSubscribedApps(pClientUser, pAppList, size, a3);
+	uint32_t count = Hooks::IClientUser_GetSubscribedApps.tramp.fn(pClientUser, pAppList, size, a3);
 	g_pLog->once("IClientUser::GetSubscribedApps(%p, %p, %i, %i) -> %i\n", pClientUser, pAppList, size, a3, count);
 
 	//Valve calls this function twice, once with size of 0 then again
@@ -290,7 +368,7 @@ static uint32_t hkClientUser_GetSubscribedApps(void* pClientUser, uint32_t* pApp
 	return count;
 }
 
-[[gnu::hot]]
+__attribute__((hot))
 static void hkClientUser_PipeLoop(void* pClientUser, void* a1, void* a2, void* a3)
 {
 	//g_pLog->debug("IClientUser::PipeLoop(%p, %p, %p, %p)\n", pClientUser, a1, a2, a3);
@@ -299,14 +377,20 @@ static void hkClientUser_PipeLoop(void* pClientUser, void* a1, void* a2, void* a
 	{
 		g_pSteamUser = reinterpret_cast<IClientUser*>(pClientUser);
 
-		LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientUser), &IClientUser_vmt);
-		LM_VmtHook(&IClientUser_vmt, VFTIndexes::IClientUser::GetSteamID, reinterpret_cast<lm_address_t>(hkClientUser_GetSteamId));
+		std::shared_ptr<lm_vmt_t> vft = std::make_shared<lm_vmt_t>();
+		LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientUser), vft.get());
 
-		g_pLog->debug("IClientUser->vft at %p\n", IClientUser_vmt.vtable);
+		Hooks::IClientUser_GetSteamId.setup(vft, VFTIndexes::IClientUser::GetSteamID, hkClientUser_GetSteamId);
+		Hooks::IClientUser_GetSteamId.place();
+
+		//LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientUser), &IClientUser_vmt);
+		//LM_VmtHook(&IClientUser_vmt, VFTIndexes::IClientUser::GetSteamID, reinterpret_cast<lm_address_t>(hkClientUser_GetSteamId));
+
+		g_pLog->debug("IClientUser->vft at %p\n", vft->vtable);
 		hooked = true;
 	}
 
-	Hooks::IClientUser_PipeLoop(pClientUser, a1, a2, a3);
+	Hooks::IClientUser_PipeLoop.tramp.fn(pClientUser, a1, a2, a3);
 }
 
 static void patchRetn(lm_address_t address)
@@ -319,48 +403,47 @@ static void patchRetn(lm_address_t address)
 	LM_ProtMemory(address, 1, oldProt, LM_NULL);
 }
 
+namespace Hooks
+{
+	DetourHook<LogSteamPipeCall_t> LogSteamPipeCall("LogSteamPipeCall");
+	DetourHook<CheckAppOwnership_t> CheckAppOwnership("CheckAppOwnership");
+	DetourHook<IClientAppManager_PipeLoop_t> IClientAppManager_PipeLoop("IClientAppManager::PipeLoop");
+	DetourHook<IClientApps_PipeLoop_t> IClientApps_PipeLoop("IClientApps::PipeLoop");
+	DetourHook<IClientUser_BIsSubscribedApp_t> IClientUser_BIsSubscribedApp("IClientUser::BIsSubscribedApp");
+	DetourHook<IClientUser_GetSubscribedApps_t> IClientUser_GetSubscribedApps("IClientUser::GetSubscribedApps");
+	DetourHook<IClientUser_PipeLoop_t> IClientUser_PipeLoop("IClientUser::PipeLoop");
+
+	VFTHook<IClientAppManager_BIsDlcEnabled_t> IClientAppManager_BIsDlcEnabled("IClientAppManager::BIsDlcEnabled");
+	VFTHook<IClientAppManager_LaunchApp_t> IClientAppManager_LaunchApp("IClientAppManager::LaunchApp");
+	VFTHook<IClientAppManager_IsAppDlcInstalled_t> IClientAppManager_IsAppDlcInstalled("IClientAppManager::IsAppDlcInstalled");
+	VFTHook<IClientApps_GetDLCDataByIndex_t> IClientApps_GetDLCDataByIndex("IClientApps::GetDLCDataByIndex");
+	VFTHook<IClientUser_GetSteamId_t> IClientUser_GetSteamId("IClientUser::GetSteamId");
+}
+
 bool Hooks::setup()
 {
 	g_pLog->debug("Hooks::setup()\n");
 
-	//TODO: Create HookDef class that automatically searches the signature, hooks, fixes PIC thunks and also logs all of that 
-	lm_address_t logSteamPipeCall = MemHlp::searchSignature("LogSteamPipeCall", Patterns::LogSteamPipeCall, g_modSteamClient, MemHlp::SigFollowMode::Relative);
-	lm_address_t checkAppOwnership = MemHlp::searchSignature("CheckAppOwnership", Patterns::CheckAppOwnership, g_modSteamClient, MemHlp::SigFollowMode::Relative);
 	lm_address_t runningApp = MemHlp::searchSignature("RunningApp", Patterns::FamilyGroupRunningApp, g_modSteamClient, MemHlp::SigFollowMode::Relative);
 	lm_address_t stopPlayingBorrowedApp = MemHlp::searchSignature("StopPlayingBorrowedApp", Patterns::StopPlayingBorrowedApp, g_modSteamClient, MemHlp::SigFollowMode::PrologueUpwards);
 
-	lm_address_t clientApps_PipeLoop = MemHlp::searchSignature("IClientApps::PipeLoop", Patterns::IClientApps_PipeLoop, g_modSteamClient, MemHlp::SigFollowMode::Relative);
-	lm_address_t clientAppManager_PipeLoop = MemHlp::searchSignature("IClientAppManager::PipeLoop", Patterns::IClientAppManager_PipeLoop, g_modSteamClient, MemHlp::SigFollowMode::Relative);
-	lm_address_t clientUser_PipeLoop = MemHlp::searchSignature("IClientUser::PipeLoop", Patterns::IClientUser_PipeLoop, g_modSteamClient, MemHlp::SigFollowMode::Relative);
+	bool succeeded =
+		CheckAppOwnership.setup(Patterns::CheckAppOwnership, MemHlp::SigFollowMode::Relative, &hkCheckAppOwnership)
+		&& LogSteamPipeCall.setup(Patterns::LogSteamPipeCall, MemHlp::SigFollowMode::Relative, &hkLogSteamPipeCall)
+		&& IClientApps_PipeLoop.setup(Patterns::IClientApps_PipeLoop, MemHlp::SigFollowMode::Relative, &hkClientApps_PipeLoop)
+		&& IClientAppManager_PipeLoop.setup(Patterns::IClientAppManager_PipeLoop, MemHlp::SigFollowMode::Relative, &hkClientAppManager_PipeLoop)
+		&& IClientUser_PipeLoop.setup(Patterns::IClientUser_PipeLoop, MemHlp::SigFollowMode::Relative, &hkClientUser_PipeLoop)
+		&& IClientUser_BIsSubscribedApp.setup(Patterns::IsSubscribedApp, MemHlp::SigFollowMode::Relative, &hkClientUser_BIsSubscribedApp)
+		&& IClientUser_GetSubscribedApps.setup(Patterns::GetSubscribedApps, MemHlp::SigFollowMode::Relative, &hkClientUser_GetSubscribedApps)
 
-	//Searching this one via pattern because it's index is 100+, which breaks often
-	lm_address_t isSubscribedApp = MemHlp::searchSignature("IClientUser::BIsSubscribedApp", Patterns::IsSubscribedApp, g_modSteamClient, MemHlp::SigFollowMode::Relative);
-	//Searching this one via pattern because it needs to be hooked as early as possible
-	lm_address_t getSubscribedApps = MemHlp::searchSignature("IClientUser::GetSubscribedApps", Patterns::GetSubscribedApps, g_modSteamClient, MemHlp::SigFollowMode::Relative);
+		&& runningApp != LM_ADDRESS_BAD
+		&& stopPlayingBorrowedApp != LM_ADDRESS_BAD;
 
-	//TODO: Improve logging further, in case user encounters error I can't replicate
-	if (!checkAddresses
-		({
-			logSteamPipeCall,
-			checkAppOwnership,
-			runningApp,
-			stopPlayingBorrowedApp,
-			clientApps_PipeLoop,
-			clientAppManager_PipeLoop,
-			clientUser_PipeLoop,
-			isSubscribedApp,
-			getSubscribedApps
-		}))
+	if (!succeeded)
 	{
-		g_pLog->warn("Not all patterns found! Aborting...");
+		g_pLog->warn("Failed to find all patterns! Aborting...");
 		return false;
 	}
-
-	LM_HookCode(logSteamPipeCall, reinterpret_cast<lm_address_t>(hkLogSteamPipeCall), reinterpret_cast<lm_address_t*>(&LogSteamPipeCall));
-	MemHlp::fixPICThunkCall("LogSteamPipeCall", logSteamPipeCall, reinterpret_cast<lm_address_t>(LogSteamPipeCall));
-
-	LM_HookCode(checkAppOwnership, reinterpret_cast<lm_address_t>(hkCheckAppOwnership), reinterpret_cast<lm_address_t*>(&CheckAppOwnership));
-	MemHlp::fixPICThunkCall("CheckAppOwnership", checkAppOwnership, reinterpret_cast<lm_address_t>(CheckAppOwnership));
 
 	if (g_config.disableFamilyLock)
 	{
@@ -368,24 +451,38 @@ bool Hooks::setup()
 		patchRetn(stopPlayingBorrowedApp);
 	}
 
-	LM_HookCode(clientApps_PipeLoop, reinterpret_cast<lm_address_t>(hkClientApps_PipeLoop), reinterpret_cast<lm_address_t*>(&IClientApps_PipeLoop));
-	LM_HookCode(clientAppManager_PipeLoop, reinterpret_cast<lm_address_t>(hkClientAppManager_PipeLoop), reinterpret_cast<lm_address_t*>(&IClientAppManager_PipeLoop));
-
-	LM_HookCode(clientUser_PipeLoop, reinterpret_cast<lm_address_t>(hkClientUser_PipeLoop), reinterpret_cast<lm_address_t*>(&IClientUser_PipeLoop));
-	LM_HookCode(isSubscribedApp, reinterpret_cast<lm_address_t>(hkClientUser_BIsSubscribedApp), reinterpret_cast<lm_address_t*>(&IClientUser_BIsSubscribedApp));
-	LM_HookCode(getSubscribedApps, reinterpret_cast<lm_address_t>(hkClientUser_GetSubscribedApps), reinterpret_cast<lm_address_t*>(&IClientUser_GetSubscribedApps));
-	MemHlp::fixPICThunkCall("ISteamUser::GetSubscribedApps", getSubscribedApps, reinterpret_cast<lm_address_t>(IClientUser_GetSubscribedApps));
-
+	//Might move this into main()
+	Hooks::place();
 	return true;
 }
 
-bool Hooks::checkAddresses(std::vector<lm_address_t> addresses)
+void Hooks::place()
 {
-	for(auto& address : addresses)
-	{
-		if (address == LM_ADDRESS_BAD)
-			return false;
-	}
+	//Detours
+	CheckAppOwnership.place();
+	LogSteamPipeCall.place();
+	IClientApps_PipeLoop.place();
+	IClientAppManager_PipeLoop.place();
+	IClientUser_PipeLoop.place();
+	IClientUser_BIsSubscribedApp.place();
+	IClientUser_GetSubscribedApps.place();
+}
 
-	return true;
+void Hooks::remove()
+{
+	//Detours
+	CheckAppOwnership.remove();
+	LogSteamPipeCall.remove();
+	IClientApps_PipeLoop.remove();
+	IClientAppManager_PipeLoop.remove();
+	IClientUser_PipeLoop.remove();
+	IClientUser_BIsSubscribedApp.remove();
+	IClientUser_GetSubscribedApps.remove();
+
+	//VFT Hooks
+	IClientAppManager_BIsDlcEnabled.remove();
+	IClientAppManager_LaunchApp.remove();
+	IClientAppManager_IsAppDlcInstalled.remove();
+	IClientApps_GetDLCDataByIndex.remove();
+	IClientUser_GetSteamId.remove();
 }
