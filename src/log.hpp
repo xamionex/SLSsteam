@@ -49,7 +49,7 @@ class CLog
 	}
 
 	template<typename ...Args>
-	[[gnu::hot]]
+	__attribute__((hot))
 	void __log(LogLevel lvl, const char* msg, Args... args)
 	{
 		size_t size = snprintf(nullptr, 0, msg, args...) + 1; //Allocate one more byte for zero termination
