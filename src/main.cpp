@@ -14,6 +14,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <sys/mman.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -52,7 +53,6 @@ bool cleanEnvVar(const char* varName)
 
 bool verifySteamClientHash()
 {
-	LM_FindModule("steamclient.so", &g_modSteamClient);
 
 	auto path = std::filesystem::path(g_modSteamClient.path);
 	auto dir = path.parent_path();
@@ -73,23 +73,47 @@ bool verifySteamClientHash()
 	}
 }
 
+//Looking at /proc/self/maps it seems like this isn't needed for processes that aren't steam
+//__attribute__((noreturn))
+void unload()
+{
+	Hooks::remove();
+
+	//This is absolutely unnessecary for applications loading SLSsteam where it cancels from setup()
+	//Would be nice 
+	//lm_module_t mod;
+	//if (LM_FindModule("SLSsteam.so", &mod))
+	//{
+	//	//TODO: Investigate crash ?
+	//	//Possibly: Might be because we're unmapping what ever thread we're running in
+	//	//munmap(reinterpret_cast<void*>(mod.base), mod.size);
+	//}
+	//exit(0);
+}
+
+//TODO: Remove when unload() works properly since it should not be needed anymore after that
+bool setupSuccess = false;
+
 void setup()
 {
 	lm_process_t proc {};
 	if (!LM_GetProcess(&proc))
 	{
-		exit(1);
+		unload();
+		return;
 	}
 
 	//Do not do anything in other processes
 	if (strcmp(proc.name, "steam") != 0)
 	{
+		unload();
 		return;
 	}
 
 	g_pLog = std::unique_ptr<CLog>(CLog::createDefaultLog());
 	if (!g_pLog)
 	{
+		unload();
 		return;
 	}
 
@@ -98,16 +122,35 @@ void setup()
 	cleanEnvVar("LD_AUDIT");
 	cleanEnvVar("LD_PRELOAD");
 
-	g_config.init();
+	if(!g_config.init())
+	{
+		unload();
+		return;
+	}
+
+	setupSuccess = true;
 }
 
 void load()
 {
+	if (!setupSuccess)
+	{
+		return;
+	}
+
+	//This should never happen, but better be safe than sorry in case I refactor someday
+	if (!LM_FindModule("steamclient.so", &g_modSteamClient))
+	{
+		unload();
+		return;
+	}
+
 	if (!verifySteamClientHash())
 	{
 		if (g_config.safeMode)
 		{
 			g_pLog->warn("Unknown steamclient.so hash! Aborting...");
+			unload();
 			return;
 		}
 		else if (g_config.warnHashMissmatch)
@@ -116,10 +159,13 @@ void load()
 		}
 	}
 
-	if (Hooks::setup())
+	if (!Hooks::setup())
 	{
-		g_pLog->notify("Loaded successfully");
+		unload();
+		return;
 	}
+
+	g_pLog->notify("Loaded successfully");
 }
 
 unsigned int la_version(unsigned int)
