@@ -262,27 +262,23 @@ static bool hkClientAppManager_BIsDlcEnabled(void* pClientAppManager, uint32_t a
 __attribute__((hot))
 static void hkClientAppManager_PipeLoop(void* pClientAppManager, void* a1, void* a2, void* a3)
 {
-	static bool hooked = false;
-	if (!hooked)
-	{
-		g_pClientAppManager = reinterpret_cast<IClientAppManager*>(pClientAppManager);
+	g_pClientAppManager = reinterpret_cast<IClientAppManager*>(pClientAppManager);
 
-		std::shared_ptr<lm_vmt_t> vft = std::make_shared<lm_vmt_t>();
-		LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientAppManager), vft.get());
+	std::shared_ptr<lm_vmt_t> vft = std::make_shared<lm_vmt_t>();
+	LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientAppManager), vft.get());
 
-		Hooks::IClientAppManager_BIsDlcEnabled.setup(vft, VFTIndexes::IClientAppManager::BIsDlcEnabled, hkClientAppManager_BIsDlcEnabled);
-		Hooks::IClientAppManager_LaunchApp.setup(vft, VFTIndexes::IClientAppManager::LaunchApp, hkClientAppManager_LaunchApp);
-		Hooks::IClientAppManager_IsAppDlcInstalled.setup(vft, VFTIndexes::IClientAppManager::IsAppDlcInstalled, hkClientAppManager_IsAppDlcInstalled);
+	Hooks::IClientAppManager_BIsDlcEnabled.setup(vft, VFTIndexes::IClientAppManager::BIsDlcEnabled, hkClientAppManager_BIsDlcEnabled);
+	Hooks::IClientAppManager_LaunchApp.setup(vft, VFTIndexes::IClientAppManager::LaunchApp, hkClientAppManager_LaunchApp);
+	Hooks::IClientAppManager_IsAppDlcInstalled.setup(vft, VFTIndexes::IClientAppManager::IsAppDlcInstalled, hkClientAppManager_IsAppDlcInstalled);
 
-		Hooks::IClientAppManager_BIsDlcEnabled.place();
-		Hooks::IClientAppManager_LaunchApp.place();
-		Hooks::IClientAppManager_IsAppDlcInstalled.place();
+	Hooks::IClientAppManager_BIsDlcEnabled.place();
+	Hooks::IClientAppManager_LaunchApp.place();
+	Hooks::IClientAppManager_IsAppDlcInstalled.place();
 
-		g_pLog->debug("IClientAppManager->vft at %p\n", vft->vtable);
-		hooked = true;
-	}
+	g_pLog->debug("IClientAppManager->vft at %p\n", vft->vtable);
 
-	Hooks::IClientAppManager_PipeLoop.tramp.fn(pClientAppManager, a1, a2, a3);
+	Hooks::IClientAppManager_PipeLoop.remove();
+	Hooks::IClientAppManager_PipeLoop.originalFn.fn(pClientAppManager, a1, a2, a3);
 }
 
 //Unsure if pDlcId is really what I think it is as I don't have anymore games installed to test it (sorry, needed the disk space lmao)
@@ -302,22 +298,18 @@ static bool hkGetDLCDataByIndex(void* pClientApps, uint32_t appId, int dlcIndex,
 __attribute__((hot))
 static void hkClientApps_PipeLoop(void* pClientApps, void* a1, void* a2, void* a3)
 {
-	static bool hooked = false;
-	if (!hooked)
-	{
-		g_pClientApps = reinterpret_cast<IClientApps*>(pClientApps);
+	g_pClientApps = reinterpret_cast<IClientApps*>(pClientApps);
 
-		std::shared_ptr<lm_vmt_t> vft = std::make_shared<lm_vmt_t>();
-		LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientApps), vft.get());
+	std::shared_ptr<lm_vmt_t> vft = std::make_shared<lm_vmt_t>();
+	LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientApps), vft.get());
 
-		Hooks::IClientApps_GetDLCDataByIndex.setup(vft, VFTIndexes::IClientApps::GetDLCDataByIndex, hkGetDLCDataByIndex);
-		Hooks::IClientApps_GetDLCDataByIndex.place();
+	Hooks::IClientApps_GetDLCDataByIndex.setup(vft, VFTIndexes::IClientApps::GetDLCDataByIndex, hkGetDLCDataByIndex);
+	Hooks::IClientApps_GetDLCDataByIndex.place();
 
-		g_pLog->debug("IClientApps->vft at %p\n", vft->vtable);
-		hooked = true;
-	}
+	g_pLog->debug("IClientApps->vft at %p\n", vft->vtable);
 
-	return Hooks::IClientApps_PipeLoop.tramp.fn(pClientApps, a1, a2, a3);
+	Hooks::IClientApps_PipeLoop.remove();
+	Hooks::IClientApps_PipeLoop.originalFn.fn(pClientApps, a1, a2, a3);
 }
 
 //Optimization causes a crash to happen, so we don't
@@ -330,7 +322,9 @@ static void hkClientUser_GetSteamId(void* pClientUser, void* a1)
 	if (id && id->steamId && !g_currentSteamId)
 	{
 		g_currentSteamId = id->steamId;
-		g_pLog->once("Grabbed SteamId\n");
+		g_pLog->debug("Grabbed SteamId\n");
+
+		Hooks::IClientUser_GetSteamId.remove();
 	}
 }
 
@@ -371,26 +365,19 @@ static uint32_t hkClientUser_GetSubscribedApps(void* pClientUser, uint32_t* pApp
 __attribute__((hot))
 static void hkClientUser_PipeLoop(void* pClientUser, void* a1, void* a2, void* a3)
 {
-	//g_pLog->debug("IClientUser::PipeLoop(%p, %p, %p, %p)\n", pClientUser, a1, a2, a3);
-	static bool hooked = false;
-	if (!hooked)
-	{
-		g_pSteamUser = reinterpret_cast<IClientUser*>(pClientUser);
+	//Adding a nullcheck should not be necessary. Otherwise Steam messed up beyond recovery anyway
+	g_pSteamUser = reinterpret_cast<IClientUser*>(pClientUser);
 
-		std::shared_ptr<lm_vmt_t> vft = std::make_shared<lm_vmt_t>();
-		LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientUser), vft.get());
+	std::shared_ptr<lm_vmt_t> vft = std::make_shared<lm_vmt_t>();
+	LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientUser), vft.get());
 
-		Hooks::IClientUser_GetSteamId.setup(vft, VFTIndexes::IClientUser::GetSteamID, hkClientUser_GetSteamId);
-		Hooks::IClientUser_GetSteamId.place();
+	Hooks::IClientUser_GetSteamId.setup(vft, VFTIndexes::IClientUser::GetSteamID, hkClientUser_GetSteamId);
+	Hooks::IClientUser_GetSteamId.place();
 
-		//LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientUser), &IClientUser_vmt);
-		//LM_VmtHook(&IClientUser_vmt, VFTIndexes::IClientUser::GetSteamID, reinterpret_cast<lm_address_t>(hkClientUser_GetSteamId));
+	g_pLog->debug("IClientUser->vft at %p\n", vft->vtable);
 
-		g_pLog->debug("IClientUser->vft at %p\n", vft->vtable);
-		hooked = true;
-	}
-
-	Hooks::IClientUser_PipeLoop.tramp.fn(pClientUser, a1, a2, a3);
+	Hooks::IClientUser_PipeLoop.remove();
+	Hooks::IClientUser_PipeLoop.originalFn.fn(pClientUser, a1, a2, a3);
 }
 
 static void patchRetn(lm_address_t address)
