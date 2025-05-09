@@ -18,9 +18,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-const char* EXPECTED_STEAMCLIENT_HASH = "b3f499f3a15aa10d4b6012ca98cef7806c600834112a1d7f73641313a050b3e5";
+static const char* EXPECTED_STEAMCLIENT_HASH = "b3f499f3a15aa10d4b6012ca98cef7806c600834112a1d7f73641313a050b3e5";
 
-bool cleanEnvVar(const char* varName)
+static bool cleanEnvVar(const char* varName)
 {
 	char* var = getenv(varName);
 	if (var == NULL)
@@ -51,7 +51,7 @@ bool cleanEnvVar(const char* varName)
 	return true;
 }
 
-bool verifySteamClientHash()
+static bool verifySteamClientHash()
 {
 
 	auto path = std::filesystem::path(g_modSteamClient.path);
@@ -75,12 +75,12 @@ bool verifySteamClientHash()
 
 //Looking at /proc/self/maps it seems like this isn't needed for processes that aren't steam
 //__attribute__((noreturn))
-void unload()
+static void unload()
 {
 	Hooks::remove();
 
 	//This is absolutely unnessecary for applications loading SLSsteam where it cancels from setup()
-	//Would be nice 
+	//Would be nice to run have for failed load() attempts though 
 	//lm_module_t mod;
 	//if (LM_FindModule("SLSsteam.so", &mod))
 	//{
@@ -92,9 +92,9 @@ void unload()
 }
 
 //TODO: Remove when unload() works properly since it should not be needed anymore after that
-bool setupSuccess = false;
+static bool setupSuccess = false;
 
-void setup()
+static void setup()
 {
 	lm_process_t proc {};
 	if (!LM_GetProcess(&proc))
@@ -131,7 +131,7 @@ void setup()
 	setupSuccess = true;
 }
 
-void load()
+static void load()
 {
 	if (!setupSuccess)
 	{
