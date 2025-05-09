@@ -29,11 +29,14 @@ Hook<T>::Hook(const char* name)
 	this->name = std::string(name);
 }
 
-template<typename T> DetourHook<T>::DetourHook(const char* name) : Hook<T>::Hook(name)
+template<typename T>
+DetourHook<T>::DetourHook(const char* name) : Hook<T>::Hook(name)
 {
 	this->size = 0;
 }
-template<typename T> VFTHook<T>::VFTHook(const char* name) : Hook<T>::Hook(name)
+
+template<typename T>
+VFTHook<T>::VFTHook(const char* name) : Hook<T>::Hook(name)
 {
 	this->hooked = false;
 }
@@ -41,6 +44,8 @@ template<typename T> VFTHook<T>::VFTHook(const char* name) : Hook<T>::Hook(name)
 template<typename T>
 bool DetourHook<T>::setup(const char* pattern, const MemHlp::SigFollowMode followMode, T hookFn)
 {
+	//Hardcoding g_modSteamClient here is definitely bad design, but we can easily change that
+	//in case we ever need to
 	lm_address_t oFn = MemHlp::searchSignature(this->name.c_str(), pattern, g_modSteamClient, followMode);
 	if (oFn == LM_ADDRESS_BAD)
 	{
@@ -174,7 +179,6 @@ static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOw
 
 	//Doing that might be not worth it since this will most likely be easier to mantain
 	//TODO: Backtrace those 4 calls and only patch the really necessary ones since this might be prone to breakage
-	//Also might need to change the ownerSteamId to someone not in the family, since otherwise owned games won't stay unlocked
 	if (g_config.disableFamilyLock && appIdOwnerOverride.count(appId) && appIdOwnerOverride.at(appId) < 4)
 	{
 		pOwnershipInfo->ownerSteamId = 1; //Setting to "arbitrary" steam Id instead of own, otherwise bypass won't work for own games
