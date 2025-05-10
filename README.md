@@ -45,7 +45,7 @@ Configuration gets created at ~/.config/SLSsteam/config.yaml during first run
 
 ```bash
 git pull
-make
+make rebuild
 ```
 
 Afterwards run the installer again if that's what you've been using to launch SLSsteam
