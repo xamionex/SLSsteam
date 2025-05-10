@@ -50,6 +50,10 @@ zips: rebuild
 	#Maybe should be somewhere else, but who cares. Does anyone even use this besides me?
 	7z a -mx9 -m9=lzma2 "zips/SLSsteam - SLSConfig $(DATE).7z" "$(HOME)/.config/SLSsteam/config.yaml"
 
+	#Compatibility for Github issues
+	7z a -mx9 -m9=lzma "zips/SLSsteam $(DATE).zip" "bin/SLSsteam.so" "setup.sh"
+	7z a -mx9 -m9=lzma "zips/SLSsteam - SLSConfig $(DATE).zip" "$(HOME)/.config/SLSsteam/config.yaml"
+
 build: bin/SLSsteam.so
 rebuild: clean build
 all: clean build zips
