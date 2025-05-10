@@ -10,8 +10,7 @@ objs := $(srcs:src/%.cpp=obj/%.o)
 deps := $(objs:%.o=%.d)
 
 CXXFLAGS := -O3 -flto=auto -fPIC -m32 -std=c++20 -Wall -Wextra -Wpedantic
-#Need static-listdc++ because steam seems to mess with LD_LIBRARY_PATH
-LDFLAGS := -shared -static-libstdc++
+LDFLAGS := -shared
 
 #OpenSSL
 LDFLAGS += -lssl -lcrypto
