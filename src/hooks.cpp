@@ -22,6 +22,7 @@
 #include <memory>
 #include <strings.h>
 #include <unistd.h>
+#include <vector>
 
 template<typename T>
 Hook<T>::Hook(const char* name)
@@ -316,22 +317,6 @@ static void hkClientApps_PipeLoop(void* pClientApps, void* a1, void* a2, void* a
 	Hooks::IClientApps_PipeLoop.originalFn.fn(pClientApps, a1, a2, a3);
 }
 
-//Optimization causes a crash to happen, so we don't
-__attribute__((optimize(0), stdcall, hot))
-static void hkClientUser_GetSteamId(void* pClientUser, void* a1)
-{
-	Hooks::IClientUser_GetSteamId.originalFn.fn(pClientUser, a1);
-
-	CSteamId* id = reinterpret_cast<CSteamId*>(pClientUser);
-	if (id && id->steamId && !g_currentSteamId)
-	{
-		g_currentSteamId = id->steamId;
-		g_pLog->debug("Grabbed SteamId\n");
-
-		Hooks::IClientUser_GetSteamId.remove();
-	}
-}
-
 static bool hkClientUser_BIsSubscribedApp(void* pClientUser, uint32_t appId)
 {
 	const bool ret = Hooks::IClientUser_BIsSubscribedApp.tramp.fn(pClientUser, appId);
@@ -366,24 +351,6 @@ static uint32_t hkClientUser_GetSubscribedApps(void* pClientUser, uint32_t* pApp
 	return count;
 }
 
-__attribute__((hot))
-static void hkClientUser_PipeLoop(void* pClientUser, void* a1, void* a2, void* a3)
-{
-	//Adding a nullcheck should not be necessary. Otherwise Steam messed up beyond recovery anyway
-	g_pSteamUser = reinterpret_cast<IClientUser*>(pClientUser);
-
-	std::shared_ptr<lm_vmt_t> vft = std::make_shared<lm_vmt_t>();
-	LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientUser), vft.get());
-
-	Hooks::IClientUser_GetSteamId.setup(vft, VFTIndexes::IClientUser::GetSteamID, hkClientUser_GetSteamId);
-	Hooks::IClientUser_GetSteamId.place();
-
-	g_pLog->debug("IClientUser->vft at %p\n", vft->vtable);
-
-	Hooks::IClientUser_PipeLoop.remove();
-	Hooks::IClientUser_PipeLoop.originalFn.fn(pClientUser, a1, a2, a3);
-}
-
 static void patchRetn(lm_address_t address)
 {
 	constexpr lm_byte_t retn = 0xC3;
@@ -394,6 +361,84 @@ static void patchRetn(lm_address_t address)
 	LM_ProtMemory(address, 1, oldProt, LM_NULL);
 }
 
+static lm_address_t hkGetSteamId;
+static bool createAndPlaceSteamIdHook()
+{
+	hkGetSteamId = LM_AllocMemory(0, LM_PROT_XRW);
+	if (hkGetSteamId == LM_ADDRESS_BAD)
+	{
+		g_pLog->debug("Failed to allocate memory for GetSteamId!\n");
+		return false;
+	}
+
+	g_pLog->debug("Allocated memory for GetSteamId hook at %p\n", hkGetSteamId);
+
+	auto insts = std::vector<lm_inst_t>();
+	lm_address_t readAddr = Hooks::IClientUser_GetSteamId;
+	for(;;)
+	{
+		lm_inst_t inst;
+		if (!LM_Disassemble(readAddr, &inst))
+		{
+			g_pLog->debug("Failed to disassemble function at %p!\n", readAddr);
+			return false;
+		}
+
+		insts.emplace_back(inst);
+		readAddr = inst.address + inst.size;
+
+		if (strcmp(inst.mnemonic, "ret") == 0)
+		{
+			break;
+		}
+	}
+
+	const unsigned int retIdx = insts.size() - 1;
+
+	g_pLog->debug("Ret is instruction number %u\n", retIdx);
+	//TODO: Create InlineHook class for this
+	size_t totalBytes = 0;
+	unsigned int instsToOverwrite = 0;
+	for(int i = retIdx; i >= 0; i--)
+	{
+		lm_inst_t inst = insts.at(i);
+		totalBytes += inst.size;
+		instsToOverwrite++;
+
+		//Need only 5 bytes to place relative jmp
+		if (totalBytes >= 5)
+		{
+			break;
+		}
+	}
+
+	lm_address_t writeAddr = hkGetSteamId;
+	//TODO: Dynamically resolve register which holds SteamId
+	MemHlp::assembleCodeAt(writeAddr, "mov [%p], ecx", &g_currentSteamId);
+
+	//Write the overwritten instructions after our hook code
+	for (unsigned int i = 0; i < instsToOverwrite; i++)
+	{
+		lm_inst_t inst = insts.at(insts.size() - instsToOverwrite + i);
+		memcpy(reinterpret_cast<void*>(writeAddr), inst.bytes, inst.size);
+
+		writeAddr += inst.size;
+		g_pLog->debug("Copied %s %s to tramp\n", inst.mnemonic, inst.op_str);
+	}
+
+	lm_address_t jmpAddr = insts.at(insts.size() - instsToOverwrite).address;
+	g_pLog->debug("Placing jmp at %p\n", jmpAddr);
+
+	//Might be worth to convert to LM_AssembleEx, but whatever
+	lm_prot_t oldProt;
+	LM_ProtMemory(jmpAddr, 5, LM_PROT_XRW, &oldProt);
+	*reinterpret_cast<lm_byte_t*>(jmpAddr) = 0xE9;
+	*reinterpret_cast<lm_address_t*>(jmpAddr + 1) = hkGetSteamId - jmpAddr - 5;
+	LM_ProtMemory(jmpAddr, 5, oldProt, nullptr);
+
+	return true;
+}
+
 namespace Hooks
 {
 	DetourHook<LogSteamPipeCall_t> LogSteamPipeCall("LogSteamPipeCall");
@@ -402,18 +447,20 @@ namespace Hooks
 	DetourHook<IClientApps_PipeLoop_t> IClientApps_PipeLoop("IClientApps::PipeLoop");
 	DetourHook<IClientUser_BIsSubscribedApp_t> IClientUser_BIsSubscribedApp("IClientUser::BIsSubscribedApp");
 	DetourHook<IClientUser_GetSubscribedApps_t> IClientUser_GetSubscribedApps("IClientUser::GetSubscribedApps");
-	DetourHook<IClientUser_PipeLoop_t> IClientUser_PipeLoop("IClientUser::PipeLoop");
 
 	VFTHook<IClientAppManager_BIsDlcEnabled_t> IClientAppManager_BIsDlcEnabled("IClientAppManager::BIsDlcEnabled");
 	VFTHook<IClientAppManager_LaunchApp_t> IClientAppManager_LaunchApp("IClientAppManager::LaunchApp");
 	VFTHook<IClientAppManager_IsAppDlcInstalled_t> IClientAppManager_IsAppDlcInstalled("IClientAppManager::IsAppDlcInstalled");
 	VFTHook<IClientApps_GetDLCDataByIndex_t> IClientApps_GetDLCDataByIndex("IClientApps::GetDLCDataByIndex");
-	VFTHook<IClientUser_GetSteamId_t> IClientUser_GetSteamId("IClientUser::GetSteamId");
+
+	lm_address_t IClientUser_GetSteamId;
 }
 
 bool Hooks::setup()
 {
 	g_pLog->debug("Hooks::setup()\n");
+
+	IClientUser_GetSteamId = MemHlp::searchSignature("IClientUser::GetSteamId", Patterns::GetSteamId, g_modSteamClient, MemHlp::SigFollowMode::Relative);
 
 	lm_address_t runningApp = MemHlp::searchSignature("RunningApp", Patterns::FamilyGroupRunningApp, g_modSteamClient, MemHlp::SigFollowMode::Relative);
 	lm_address_t stopPlayingBorrowedApp = MemHlp::searchSignature("StopPlayingBorrowedApp", Patterns::StopPlayingBorrowedApp, g_modSteamClient, MemHlp::SigFollowMode::PrologueUpwards);
@@ -423,12 +470,12 @@ bool Hooks::setup()
 		&& LogSteamPipeCall.setup(Patterns::LogSteamPipeCall, MemHlp::SigFollowMode::Relative, &hkLogSteamPipeCall)
 		&& IClientApps_PipeLoop.setup(Patterns::IClientApps_PipeLoop, MemHlp::SigFollowMode::Relative, &hkClientApps_PipeLoop)
 		&& IClientAppManager_PipeLoop.setup(Patterns::IClientAppManager_PipeLoop, MemHlp::SigFollowMode::Relative, &hkClientAppManager_PipeLoop)
-		&& IClientUser_PipeLoop.setup(Patterns::IClientUser_PipeLoop, MemHlp::SigFollowMode::Relative, &hkClientUser_PipeLoop)
 		&& IClientUser_BIsSubscribedApp.setup(Patterns::IsSubscribedApp, MemHlp::SigFollowMode::Relative, &hkClientUser_BIsSubscribedApp)
 		&& IClientUser_GetSubscribedApps.setup(Patterns::GetSubscribedApps, MemHlp::SigFollowMode::Relative, &hkClientUser_GetSubscribedApps)
 
 		&& runningApp != LM_ADDRESS_BAD
-		&& stopPlayingBorrowedApp != LM_ADDRESS_BAD;
+		&& stopPlayingBorrowedApp != LM_ADDRESS_BAD
+		&& IClientUser_GetSteamId != LM_ADDRESS_BAD;
 
 	if (!succeeded)
 	{
@@ -436,6 +483,7 @@ bool Hooks::setup()
 		return false;
 	}
 
+	//TODO: Elegantly move into Hooks::place()
 	if (g_config.disableFamilyLock)
 	{
 		patchRetn(runningApp);
@@ -454,9 +502,10 @@ void Hooks::place()
 	LogSteamPipeCall.place();
 	IClientApps_PipeLoop.place();
 	IClientAppManager_PipeLoop.place();
-	IClientUser_PipeLoop.place();
 	IClientUser_BIsSubscribedApp.place();
 	IClientUser_GetSubscribedApps.place();
+
+	createAndPlaceSteamIdHook();
 }
 
 void Hooks::remove()
@@ -466,7 +515,6 @@ void Hooks::remove()
 	LogSteamPipeCall.remove();
 	IClientApps_PipeLoop.remove();
 	IClientAppManager_PipeLoop.remove();
-	IClientUser_PipeLoop.remove();
 	IClientUser_BIsSubscribedApp.remove();
 	IClientUser_GetSubscribedApps.remove();
 
@@ -475,5 +523,9 @@ void Hooks::remove()
 	IClientAppManager_LaunchApp.remove();
 	IClientAppManager_IsAppDlcInstalled.remove();
 	IClientApps_GetDLCDataByIndex.remove();
-	IClientUser_GetSteamId.remove();
+	
+	if (hkGetSteamId != LM_ADDRESS_BAD)
+	{
+		LM_FreeMemory(hkGetSteamId, 0);
+	}
 }

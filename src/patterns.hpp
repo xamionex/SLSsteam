@@ -26,5 +26,7 @@ namespace Patterns
 	constexpr lm_string_t GetSubscribedApps = "E8 ? ? ? ? 89 C6 83 C4 10 85 C0 0F 84 ? ? ? ? 8B 9D ? ? ? ? 39 D8";
 	//Relative
 	constexpr lm_string_t IsSubscribedApp = "E8 ? ? ? ? 83 C4 10 84 C0 74 ? 8B 95 ? ? ? ? 83 EC 04";
+	//Relative, not unique. All matches point to correct function though
+	constexpr lm_string_t GetSteamId = "E8 ? ? ? ? 89 D8 83 C4 0C 83 C4 08 5B C2 04 00 ? 83 EC 08 50 53 FF D2 89 D8 83 C4 0C 83 C4 08 5B C2 04 00";
 }
 
