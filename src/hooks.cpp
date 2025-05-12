@@ -18,8 +18,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 #include <map>
 #include <memory>
+#include <pthread.h>
 #include <strings.h>
 #include <unistd.h>
 #include <vector>
@@ -141,8 +143,17 @@ static void hkLogSteamPipeCall(const char* iface, const char* fn)
 	}
 }
 
+class CAppDlcMap
+{
+public:
+	int subId = -1;
+	uint32_t gameId = 0;
+	std::unordered_set<uint32_t> dlcIds;
+};
+
 static bool applistRequested = false;
 static auto appIdOwnerOverride = std::map<uint32_t, int>();
+static auto appIdDlcMap = std::map<uint32_t, CAppDlcMap>();
 
 __attribute__((hot))
 static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOwnershipInfo)
@@ -286,11 +297,41 @@ static void hkClientAppManager_PipeLoop(void* pClientAppManager, void* a1, void*
 	Hooks::IClientAppManager_PipeLoop.originalFn.fn(pClientAppManager, a1, a2, a3);
 }
 
-//Unsure if pDlcId is really what I think it is as I don't have anymore games installed to test it (sorry, needed the disk space lmao)
-static bool hkGetDLCDataByIndex(void* pClientApps, uint32_t appId, int dlcIndex, uint32_t* pDlcId, bool* pIsAvailable, const char* dlcName, size_t dlcNameLen)
+static unsigned int hkClientApps_GetDLCCount(void* pClientApps, uint32_t appId)
 {
-	const bool ret = Hooks::IClientApps_GetDLCDataByIndex.originalFn.fn(pClientApps, appId, dlcIndex, pDlcId, pIsAvailable, dlcName, dlcNameLen);
-	g_pLog->once("IClientApps::GetDLCDataByIndex(%p, %u, %i, %p, %p, %s, %i) -> %i\n", pClientApps, appId, dlcIndex, pDlcId, pIsAvailable, dlcName, dlcNameLen, ret);
+	unsigned int count = Hooks::IClientApps_GetDLCCount.originalFn.fn(pClientApps, appId);
+	if (g_config.dlcData.contains(appId))
+	{
+		count = g_config.dlcData[appId].dlcIds.size();
+	}
+
+	g_pLog->once("IClientApps::GetDLCCount(%p, %u) -> %u\n", pClientApps, appId, count);
+	return count;
+}
+
+static bool hkClientApps_GetDLCDataByIndex(void* pClientApps, uint32_t appId, int dlcIndex, uint32_t* pDlcId, bool* pIsAvailable, char* pChDlcName, size_t dlcNameLen)
+{
+	bool ret;
+
+	if (g_config.dlcData.contains(appId))
+	{
+		auto& data = g_config.dlcData[appId];
+		auto dlc = std::next(data.dlcIds.begin(), dlcIndex);
+
+		*pDlcId = dlc->first;
+
+		//No clue if we have to check for errors during printf since the devs hopefully didn't fuck
+		//up the dlcNameLen. Who knows though
+		snprintf(pChDlcName, dlcNameLen, "%s", dlc->second.c_str());
+
+		ret = true;
+	}
+	else
+	{
+		ret = Hooks::IClientApps_GetDLCDataByIndex.originalFn.fn(pClientApps, appId, dlcIndex, pDlcId, pIsAvailable, pChDlcName, dlcNameLen);
+	}
+
+	g_pLog->once("IClientApps::GetDLCDataByIndex(%p, %u, %i, %p, %p, %s, %i) -> %i\n", pClientApps, appId, dlcIndex, pDlcId, pIsAvailable, pChDlcName, dlcNameLen, ret);
 
 	if (pIsAvailable && pDlcId && !g_config.shouldExcludeAppId(*pDlcId))
 	{
@@ -308,8 +349,11 @@ static void hkClientApps_PipeLoop(void* pClientApps, void* a1, void* a2, void* a
 	std::shared_ptr<lm_vmt_t> vft = std::make_shared<lm_vmt_t>();
 	LM_VmtNew(*reinterpret_cast<lm_address_t**>(pClientApps), vft.get());
 
-	Hooks::IClientApps_GetDLCDataByIndex.setup(vft, VFTIndexes::IClientApps::GetDLCDataByIndex, hkGetDLCDataByIndex);
+	Hooks::IClientApps_GetDLCDataByIndex.setup(vft, VFTIndexes::IClientApps::GetDLCDataByIndex, hkClientApps_GetDLCDataByIndex);
+	Hooks::IClientApps_GetDLCCount.setup(vft, VFTIndexes::IClientApps::GetDLCCount, hkClientApps_GetDLCCount);
+
 	Hooks::IClientApps_GetDLCDataByIndex.place();
+	Hooks::IClientApps_GetDLCCount.place();
 
 	g_pLog->debug("IClientApps->vft at %p\n", vft->vtable);
 
@@ -452,6 +496,7 @@ namespace Hooks
 	VFTHook<IClientAppManager_LaunchApp_t> IClientAppManager_LaunchApp("IClientAppManager::LaunchApp");
 	VFTHook<IClientAppManager_IsAppDlcInstalled_t> IClientAppManager_IsAppDlcInstalled("IClientAppManager::IsAppDlcInstalled");
 	VFTHook<IClientApps_GetDLCDataByIndex_t> IClientApps_GetDLCDataByIndex("IClientApps::GetDLCDataByIndex");
+	VFTHook<IClientApps_GetDLCCount_t> IClientApps_GetDLCCount("IClientApps::GetDLCCount");
 
 	lm_address_t IClientUser_GetSteamId;
 }

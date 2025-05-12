@@ -7,7 +7,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <map>
 #include <string>
+#include <vector>
 
 //TODO: Move into own .yaml file somehow
 static const char* defaultConfig = 
@@ -16,6 +18,11 @@ static const char* defaultConfig =
 "# - 440\n"
 "# - 730\n"
 "#Take care of not messing up your spaces! Otherwise it won't work\n\n"
+"#Example of DlcData:\n"
+"#DlcData:\n"
+"#  AppId:\n"
+"#    FirstDlcAppId: \"Dlc Name\"\n"
+"#    SecondDlcAppId: \"Dlc Name\"\n\n"
 "#Disables Family Share license locking for self and others\n"
 "DisableFamilyShareLock: yes\n\n"
 "#Switches to whitelist instead of the default blacklist\n"
@@ -29,6 +36,9 @@ static const char* defaultConfig =
 "PlayNotOwnedGames: no\n\n"
 "#Additional AppIds to inject (Overrides your black-/whitelist & also overrides OwnerIds for apps you got shared!) Best to use this only on games NOT in your library.\n"
 "AdditionalApps:\n\n"
+"#Extra Data for Dlcs belonging to a specific AppId. Only needed\n"
+"#when the App you're playing is hit by Steams 64 DLC limit\n"
+"DlcData:\n\n"
 "#Automatically disable SLSsteam when steamclient.so does not match a predefined file hash that is known to work\n"
 "#You should enable this if you're planing to use SLSsteam with Steam Deck's gamemode\n"
 "SafeMode: no\n\n"
@@ -67,7 +77,7 @@ bool CConfig::createFile()
 		std::string dir = getDir();
 		if (!std::filesystem::exists(dir))
 		{
-			if (!std::filesystem::create_directories(dir))
+			if (!std::filesystem::create_directory(dir))
 			{
 				g_pLog->notify("Unable to create config directory at %s!\n", dir.c_str());
 				return false;
@@ -119,36 +129,101 @@ bool CConfig::loadSettings()
 	disableFamilyLock = getSetting<bool>(node, "DisableFamilyShareLock", true);
 	useWhiteList = getSetting<bool>(node, "UseWhitelist", false);
 	automaticFilter = getSetting<bool>(node, "AutoFilterList", true);
-	//Sadly can't initialize with unordered_set directly since the type is incomplete
-	//Same is true for vector too, but an exception has been made for it
-	//So we need to convert it later
-	const auto appIds = getSetting(node, "AppIds", std::vector<uint32_t>());
 	playNotOwnedGames = getSetting<bool>(node, "PlayNotOwnedGames", false);
-	const auto addedAppIds = getSetting(node, "AdditionalApps", std::vector<uint32_t>());
 	safeMode = getSetting<bool>(node, "SafeMode", false);
 	warnHashMissmatch = getSetting<bool>(node, "WarnHashMissmatch", false);
 	extendedLogging = getSetting<bool>(node, "ExtendedLogging", false);
-
+	
 	//TODO: Create smart logging function to log them automatically via getSetting
 	g_pLog->info("DisableFamilyShareLock: %i\n", disableFamilyLock);
 	g_pLog->info("UseWhitelist: %i\n", useWhiteList);
 	g_pLog->info("AutoFilterList: %i\n", automaticFilter);
-	g_pLog->info("AppIds:\n");
-	for(auto& appId : appIds)
-	{
-		this->appIds.emplace(appId);
-		g_pLog->info("%u\n", appId);
-	}
 	g_pLog->info("PlayNotOwnedGames: %i\n", playNotOwnedGames);
-	g_pLog->info("AdditionalApps:\n");
-	for(auto& appId : addedAppIds)
-	{
-		this->addedAppIds.emplace(appId);
-		g_pLog->info("%u\n", appId);
-	}
 	g_pLog->info("SafeMode: %i\n", safeMode);
 	g_pLog->info("WarnHashMissmatch: %i\n", warnHashMissmatch);
 	g_pLog->info("ExtendedLogging: %i\n", extendedLogging);
+
+	//TODO: Create function to parse these kinda nodes, instead of c+p them
+	const auto appIdsNode = node["AppIds"];
+	if (appIdsNode)
+	{
+		for(auto& appIdNode : appIdsNode)
+		{
+			try
+			{
+				uint32_t appId = appIdNode.as<uint32_t>();
+				this->appIds.emplace(appId);
+				g_pLog->info("Added %u to AppIds\n", appId);
+			}
+			catch(...)
+			{
+				g_pLog->notify("Failed to parse %s in AppIds!", appIdNode.as<std::string>().c_str());
+			}
+		}
+	}
+	else
+	{
+		g_pLog->notify("Missing AppIds entry in config!");
+	}
+
+	const auto additionalAppsNode = node["AdditionalApps"];
+	if (additionalAppsNode)
+	{
+		for(auto& appIdNode : additionalAppsNode)
+		{
+			try
+			{
+				uint32_t appId = appIdNode.as<uint32_t>();
+				this->addedAppIds.emplace(appId);
+				g_pLog->info("Added %u to AdditionalApps\n", appId);
+			}
+			catch(...)
+			{
+				g_pLog->notify("Failed to parse %s in AdditionalApps!", appIdNode.as<std::string>().c_str());
+			}
+		}
+	}
+	else
+	{
+		g_pLog->notify("Missing AdditionalApps entry in config!");
+	}
+
+	const auto dlcDataNode = node["DlcData"];
+	if(dlcDataNode)
+	{
+		for(auto& app : dlcDataNode)
+		{
+			try
+			{
+				const uint32_t parentId = app.first.as<uint32_t>();
+
+				CDlcData data;
+				data.parentId = parentId;
+				g_pLog->debug("Adding DlcData for %u\n", parentId);
+
+				for(auto& dlc : app.second)
+				{
+					const uint32_t dlcId = dlc.first.as<uint32_t>();
+					//There's more efficient types to store strings, but they mostly do not work
+					const std::string dlcName = dlc.second.as<std::string>();
+
+					data.dlcIds[dlcId] = dlcName;
+					g_pLog->debug("DlcId %u -> %s\n", dlc.first.as<uint32_t>(), dlc.second.as<std::string>().c_str());
+				}
+
+				dlcData[parentId] = data;
+			}
+			catch(...)
+			{
+				g_pLog->notify("Failed to parse DlcData!");
+				break;
+			}
+		}
+	}
+	else
+	{
+		g_pLog->notify("Missing DlcData entry in config!\n");
+	}
 
 	return true;
 }

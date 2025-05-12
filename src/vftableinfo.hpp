@@ -20,5 +20,6 @@ namespace VFTIndexes
 		constexpr int GetAppInstallState = 4;
 		constexpr int IsAppDlcInstalled = 9;
 		constexpr int BIsDlcEnabled = 11;
+
 	}
 }

@@ -9,12 +9,23 @@
 #include <cstdio>
 #include <pthread.h>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
 class CConfig {
 public:
+	class CDlcData
+	{
+	public:
+		uint32_t parentId;
+		std::unordered_map<uint32_t, std::string> dlcIds;
+		//No default constructor, otherwise dlcData will complain that no matching one was found
+		//without implementing it ourself anyway
+	};
+
 	std::unordered_set<uint32_t> appIds;
 	std::unordered_set<uint32_t> addedAppIds;
+	std::unordered_map<uint32_t, CDlcData> dlcData;
 
 	bool disableFamilyLock;
 	bool useWhiteList;
