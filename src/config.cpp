@@ -7,16 +7,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <map>
 #include <string>
-#include <vector>
 
 //TODO: Move into own .yaml file somehow
 static const char* defaultConfig = 
 "#Example AppIds Config for those not familiar with YAML:\n"
 "#AppIds:\n"
-"# - 440\n"
-"# - 730\n"
+"#  - 440\n"
+"#  - 730\n"
 "#Take care of not messing up your spaces! Otherwise it won't work\n\n"
 "#Example of DlcData:\n"
 "#DlcData:\n"
@@ -133,7 +131,7 @@ bool CConfig::loadSettings()
 	safeMode = getSetting<bool>(node, "SafeMode", false);
 	warnHashMissmatch = getSetting<bool>(node, "WarnHashMissmatch", false);
 	extendedLogging = getSetting<bool>(node, "ExtendedLogging", false);
-	
+
 	//TODO: Create smart logging function to log them automatically via getSetting
 	g_pLog->info("DisableFamilyShareLock: %i\n", disableFamilyLock);
 	g_pLog->info("UseWhitelist: %i\n", useWhiteList);
@@ -208,7 +206,7 @@ bool CConfig::loadSettings()
 					const std::string dlcName = dlc.second.as<std::string>();
 
 					data.dlcIds[dlcId] = dlcName;
-					g_pLog->debug("DlcId %u -> %s\n", dlc.first.as<uint32_t>(), dlc.second.as<std::string>().c_str());
+					g_pLog->debug("DlcId %u -> %s\n", dlcId, dlcName.c_str());
 				}
 
 				dlcData[parentId] = data;

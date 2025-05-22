@@ -9,10 +9,8 @@
 #include "libmem/libmem.h"
 
 #include "sdk/CAppOwnershipInfo.hpp"
-#include "sdk/CSteamID.hpp"
 #include "sdk/IClientApps.hpp"
 #include "sdk/IClientAppManager.hpp"
-#include "sdk/IClientUser.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -143,17 +141,8 @@ static void hkLogSteamPipeCall(const char* iface, const char* fn)
 	}
 }
 
-class CAppDlcMap
-{
-public:
-	int subId = -1;
-	uint32_t gameId = 0;
-	std::unordered_set<uint32_t> dlcIds;
-};
-
 static bool applistRequested = false;
 static auto appIdOwnerOverride = std::map<uint32_t, int>();
-static auto appIdDlcMap = std::map<uint32_t, CAppDlcMap>();
 
 __attribute__((hot))
 static bool hkCheckAppOwnership(void* a0, uint32_t appId, CAppOwnershipInfo* pOwnershipInfo)
@@ -400,7 +389,7 @@ static void patchRetn(lm_address_t address)
 	constexpr lm_byte_t retn = 0xC3;
 
 	lm_prot_t oldProt;
-	LM_ProtMemory(address, 1, LM_PROT_XRW, &oldProt); //LM_PROT_W Should be enough, but just in case something tries to execute it inbetween use setting the prot and writing to it
+	LM_ProtMemory(address, 1, LM_PROT_XRW, &oldProt); //LM_PROT_W Should be enough, but just in case something tries to execute it inbetween us setting the prot and writing to it
 	LM_WriteMemory(address, &retn, 1);
 	LM_ProtMemory(address, 1, oldProt, LM_NULL);
 }
