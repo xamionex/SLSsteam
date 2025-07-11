@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 SLSDIR="$HOME/.local/share/SLSsteam"
 SLSPATH="$SLSDIR/path"
