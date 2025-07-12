@@ -11,11 +11,12 @@
 
 ## Downloading and Compiling
 
-It is recommended to grab a release from
-[Releases](https://github.com/AceSLS/SLSsteam/releases) instead!
+If you're on a pretty up to date distro you can go to
+[Releases](https://github.com/AceSLS/SLSsteam/releases) instead.
 Afterwards skip straight to [Usage](#usage) or [Installation and Uninstallation](#installation-and-uninstallation)
 
-Make sure you have OpenSSL installed!
+Requires: 32 bit versions of g++, OpenSSL & pkg-config
+
 Then run:
 
 ```bash
