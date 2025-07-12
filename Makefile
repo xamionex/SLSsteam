@@ -10,10 +10,9 @@ objs := $(srcs:src/%.cpp=obj/%.o)
 deps := $(objs:%.o=%.d)
 
 CXXFLAGS := -O3 -flto=auto -fPIC -m32 -std=c++20 -Wall -Wextra -Wpedantic
-LDFLAGS := -shared
 
-#OpenSSL
-LDFLAGS += -lssl -lcrypto
+LDFLAGS := -shared
+LDFLAGS += $(shell pkg-config --libs "openssl")
 
 DATE := $(shell date "+%Y%m%d%H%M%S")
 
@@ -31,7 +30,7 @@ endif
 
 bin/SLSsteam.so: $(objs) $(libs)
 	@mkdir -p bin
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $^ -o bin/SLSsteam.so
+	$(CXX) $(CXXFLAGS) $^ -o bin/SLSsteam.so $(LDFLAGS)
 
 -include $(deps)
 obj/%.o : src/%.cpp
